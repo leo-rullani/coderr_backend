@@ -1,6 +1,6 @@
 from rest_framework import generics, permissions
 from users_app.models import UserProfile
-from .serializers import UserProfileSerializer
+from .serializers import UserProfileSerializer, BusinessProfileListSerializer
 from .permissions import IsOwnerProfile
 from django.shortcuts import get_object_or_404
 
@@ -14,7 +14,6 @@ class UserProfileDetailView(generics.RetrieveUpdateAPIView):
     queryset = UserProfile.objects.all()
     serializer_class = UserProfileSerializer
     permission_classes = [permissions.IsAuthenticated, IsOwnerProfile]
-    # lookup_field = 'user_id'  # <- geht auch, aber ist bei OneToOne nicht default!
 
     def get_object(self):
         """
@@ -22,13 +21,12 @@ class UserProfileDetailView(generics.RetrieveUpdateAPIView):
         """
         user_id = self.kwargs["pk"]
         return get_object_or_404(UserProfile, user_id=user_id)
-
 class BusinessProfileListView(generics.ListAPIView):
     """
     Returns a list of all business user profiles.
     Accessible only to authenticated users.
     """
-    serializer_class = UserProfileSerializer
+    serializer_class = BusinessProfileListSerializer  # <- NEU
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
