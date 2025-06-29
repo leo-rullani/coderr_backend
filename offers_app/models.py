@@ -18,9 +18,11 @@ class Offer(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     min_price = models.DecimalField(
-        max_digits=10, decimal_places=2
+        max_digits=10, decimal_places=2, null=True, blank=True
     )
-    min_delivery_time = models.PositiveIntegerField()
+    min_delivery_time = models.PositiveIntegerField(
+        null=True, blank=True
+    )
 
     def __str__(self):
         """
@@ -35,10 +37,16 @@ class OfferDetail(models.Model):
     offer = models.ForeignKey(
         Offer, on_delete=models.CASCADE, related_name="details"
     )
-    url = models.CharField(max_length=255)
+    title = models.CharField(max_length=200, null=True, blank=True)
+    revisions = models.PositiveIntegerField(null=True, blank=True)
+    delivery_time_in_days = models.PositiveIntegerField(null=True, blank=True)
+    price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    features = models.JSONField(null=True, blank=True)
+    offer_type = models.CharField(max_length=20, null=True, blank=True)
+    url = models.CharField(max_length=255, blank=True, null=True)
 
     def __str__(self):
         """
         Returns string representation of the offer detail.
         """
-        return f"Detail {self.id} for Offer {self.offer_id}"
+        return f"Detail {self.id}: {self.title} ({self.offer_type})"
