@@ -7,6 +7,7 @@ class UserProfile(models.Model):
     """
     user = models.OneToOneField(CustomUser, on_delete=models.CASCADE)
     file = models.ImageField(upload_to='profile_pics/', null=True, blank=True)
+    uploaded_at = models.DateTimeField(auto_now_add=True, null=True, blank=True) 
     first_name = models.CharField(max_length=50, blank=True, default="")
     last_name = models.CharField(max_length=50, blank=True, default="")
     location = models.CharField(max_length=100, blank=True, default="")

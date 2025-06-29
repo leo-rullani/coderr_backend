@@ -74,3 +74,29 @@ class BusinessProfileListSerializer(serializers.ModelSerializer):
             if rep[field] is None:
                 rep[field] = ""
         return rep
+
+class CustomerProfileListSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source='user.username', read_only=True)
+    type = serializers.CharField(source='user.role', read_only=True)
+
+    class Meta:
+        model = UserProfile
+        fields = [
+            "user",
+            "username",
+            "first_name",
+            "last_name",
+            "file",
+            "uploaded_at",
+            "type"
+        ]
+
+    def to_representation(self, instance):
+        """
+        Ensures that empty fields are returned as empty strings instead of null.
+        """
+        rep = super().to_representation(instance)
+        for field in ["first_name", "last_name"]:
+            if rep[field] is None:
+                rep[field] = ""
+        return rep

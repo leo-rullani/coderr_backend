@@ -1,6 +1,10 @@
 from rest_framework import generics, permissions
 from users_app.models import UserProfile
-from .serializers import UserProfileSerializer, BusinessProfileListSerializer
+from .serializers import (
+    UserProfileSerializer,
+    BusinessProfileListSerializer,
+    CustomerProfileListSerializer,
+)
 from .permissions import IsOwnerProfile
 from django.shortcuts import get_object_or_404
 
@@ -10,7 +14,6 @@ class UserProfileDetailView(generics.RetrieveUpdateAPIView):
     using the user's ID in the URL.
     Only the profile owner is authorized.
     """
-
     queryset = UserProfile.objects.all()
     serializer_class = UserProfileSerializer
     permission_classes = [permissions.IsAuthenticated, IsOwnerProfile]
@@ -21,12 +24,13 @@ class UserProfileDetailView(generics.RetrieveUpdateAPIView):
         """
         user_id = self.kwargs["pk"]
         return get_object_or_404(UserProfile, user_id=user_id)
+
 class BusinessProfileListView(generics.ListAPIView):
     """
     Returns a list of all business user profiles.
     Accessible only to authenticated users.
     """
-    serializer_class = BusinessProfileListSerializer  # <- NEU
+    serializer_class = BusinessProfileListSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
@@ -37,7 +41,7 @@ class CustomerProfileListView(generics.ListAPIView):
     Returns a list of all customer user profiles.
     Accessible only to authenticated users.
     """
-    serializer_class = UserProfileSerializer
+    serializer_class = CustomerProfileListSerializer   # <--- NEU!
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
