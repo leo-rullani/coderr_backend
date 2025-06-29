@@ -4,7 +4,7 @@ from auth_app.models import CustomUser
 
 class UserProfileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
-    email = serializers.EmailField(source='user.email', read_only=True)
+    email = serializers.EmailField(source='user.email', read_only=False)
     type = serializers.CharField(source='user.role', read_only=True)
 
     class Meta:
@@ -34,3 +34,16 @@ class UserProfileSerializer(serializers.ModelSerializer):
             if rep[field] is None:
                 rep[field] = ""
         return rep
+    
+    def update(self, instance, validated_data):
+        """
+        Update user profile and email field from related CustomUser model.
+        """
+        user_data = validated_data.pop("user", {})
+        email = user_data.get("email")
+
+        if email:
+            instance.user.email = email
+            instance.user.save()
+
+        return super().update(instance, validated_data)
