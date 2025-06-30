@@ -1,19 +1,16 @@
-from rest_framework import generics, filters, permissions, serializers
+from rest_framework import generics, filters, permissions
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from offers_app.models import Offer, OfferDetail
 from offers_app.api.serializers import (
     OfferListSerializer,
     OfferDetailSerializer,
-    OfferDetailCreateSerializer,
+    OfferCreateSerializer,        
     OfferDetailFullSerializer,
     OfferPublicSerializer,
 )
 from offers_app.api.permissions import IsOwner
 from offers_app.api.filters import OfferFilter
-
-# OPTIONAL: Bald extra Datei offers_app/api/permissions.py für IsOwner!
-# from offers_app.api.permissions import IsOwner
 
 class IsBusinessUser(permissions.BasePermission):
     """
@@ -50,14 +47,14 @@ class OfferListCreateAPIView(generics.ListCreateAPIView):
         Chooses serializer based on request method.
         """
         if self.request.method == "POST":
-            return OfferDetailCreateSerializer
+            return OfferCreateSerializer  
         return OfferListSerializer
 
     def perform_create(self, serializer):
         """
         Sets the current user as the creator for the new offer.
         """
-        serializer.save(user=self.request.user)
+        serializer.save()
 
 class OfferDetailAPIView(generics.RetrieveUpdateAPIView):
     """
@@ -66,7 +63,7 @@ class OfferDetailAPIView(generics.RetrieveUpdateAPIView):
     """
     queryset = Offer.objects.all().select_related('user')
     serializer_class = OfferDetailSerializer
-    permission_classes = [IsAuthenticated]  # oder [IsAuthenticated, IsOwner]
+    permission_classes = [IsAuthenticated, IsOwner]
 
 class OfferDetailDetailAPIView(generics.RetrieveAPIView):
     """
@@ -76,8 +73,3 @@ class OfferDetailDetailAPIView(generics.RetrieveAPIView):
     queryset = OfferDetail.objects.all()
     serializer_class = OfferDetailFullSerializer
     permission_classes = [IsAuthenticated]
-
-class OfferDetailAPIView(generics.RetrieveUpdateAPIView):
-    queryset = Offer.objects.all().select_related('user')
-    serializer_class = OfferPublicSerializer
-    permission_classes = [IsAuthenticated, IsOwner]

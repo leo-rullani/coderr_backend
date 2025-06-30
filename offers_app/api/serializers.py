@@ -4,6 +4,13 @@ from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
+def clean_detail_data(detail):
+    """
+    Removes all non-model fields before creating OfferDetail.
+    """
+    forbidden_keys = ['user', 'url']
+    return {k: v for k, v in detail.items() if k not in forbidden_keys}
+
 class UserDetailsSerializer(serializers.ModelSerializer):
     """
     Serializes basic user information for offer listing.
@@ -23,9 +30,6 @@ class OfferDetailShortSerializer(serializers.ModelSerializer):
         fields = ['id', 'url']
 
     def get_url(self, obj):
-        """
-        Returns the absolute URL for the offer detail object.
-        """
         return f"/offerdetails/{obj.id}/"
 
 class OfferDetailFullSerializer(serializers.ModelSerializer):
@@ -37,124 +41,84 @@ class OfferDetailFullSerializer(serializers.ModelSerializer):
     class Meta:
         model = OfferDetail
         fields = [
-            'id',
-            'title',
-            'revisions',
-            'delivery_time_in_days',
-            'price',
-            'features',
-            'offer_type',
-            'url',
+            'id', 'title', 'revisions', 'delivery_time_in_days', 'price',
+            'features', 'offer_type', 'url',
         ]
 
     def get_url(self, obj):
-        """
-        Returns the absolute URL for the offer detail object.
-        """
         request = self.context.get('request')
-        # Build absolute URL (http://127.0.0.1:8000/api/offerdetails/<id>/)
         relative_url = obj.get_absolute_url()
         if request is not None:
             return request.build_absolute_uri(relative_url)
         return relative_url
 
-class OfferListSerializer(serializers.ModelSerializer):
+class OfferDetailWriteSerializer(serializers.ModelSerializer):
     """
-    Serializes offers for the list endpoint.
-    Includes only id and url for offer details.
+    Serializer for writing/updating offer details.
+    Ensures all required fields are present.
     """
-    details = OfferDetailShortSerializer(many=True, read_only=True)
-    user_details = UserDetailsSerializer(source='user', read_only=True)
+    class Meta:
+        model = OfferDetail
+        exclude = ['offer', 'id']
+
+    def validate(self, data):
+        required = ['title', 'revisions', 'delivery_time_in_days', 'price', 'features', 'offer_type']
+        missing = [f for f in required if data.get(f) in [None, ""]]
+        if missing:
+            raise serializers.ValidationError(f"Missing fields: {', '.join(missing)}")
+        return data
+class StrictCharField(serializers.CharField):
+    def to_internal_value(self, data):
+        if not isinstance(data, str):
+            raise serializers.ValidationError("Must be a string.")
+        return super().to_internal_value(data)
+class OfferCreateSerializer(serializers.ModelSerializer):
+    """
+    Serializer for creating offers with nested offer details.
+    Enforces at least 3 details per offer (POST only).
+    """
+    details = OfferDetailWriteSerializer(many=True)
 
     class Meta:
         model = Offer
-        fields = [
-            'id',
-            'user',
-            'title',
-            'image',
-            'description',
-            'created_at',
-            'updated_at',
-            'details',
-            'min_price',
-            'min_delivery_time',
-            'user_details',
-        ]
+        fields = ['id', 'title', 'image', 'description', 'details']
 
-class OfferDetailWriteSerializer(serializers.ModelSerializer):
-    """
-    Serializer for writing/updating offer details.
-    Ensures all required fields are present.
-    """
-    class Meta:
-        model = OfferDetail
-        exclude = ['offer', 'id', 'url']
+    def validate_details(self, value):
+        if len(value) < 3:
+            raise serializers.ValidationError("At least 3 offer details are required.")
+        return value
 
-    def validate(self, data):
-        """
-        Validates required fields for each offer detail.
-        """
-        required = ['title', 'revisions', 'delivery_time_in_days', 'price', 'features', 'offer_type']
-        missing = [f for f in required if data.get(f) in [None, ""]]
-        if missing:
-            raise serializers.ValidationError(f"Missing fields: {', '.join(missing)}")
-        return data
-
-class OfferDetailWriteSerializer(serializers.ModelSerializer):
-    """
-    Serializer for writing/updating offer details.
-    Ensures all required fields are present.
-    """
-    class Meta:
-        model = OfferDetail
-        exclude = ['offer', 'id', 'url']
-
-    def validate(self, data):
-        """
-        Validates required fields for each offer detail.
-        """
-        required = ['title', 'revisions', 'delivery_time_in_days', 'price', 'features', 'offer_type']
-        missing = [f for f in required if data.get(f) in [None, ""]]
-        if missing:
-            raise serializers.ValidationError(f"Missing fields: {', '.join(missing)}")
-        return data
+    def create(self, validated_data):
+        details_data = validated_data.pop('details')
+        user = self.context['request'].user
+        offer = Offer.objects.create(user=user, **validated_data)
+        for detail_data in details_data:
+            OfferDetail.objects.create(offer=offer, **clean_detail_data(detail_data))
+        return offer
 
 class OfferDetailSerializer(serializers.ModelSerializer):
     """
     Serializes a single offer for the detail endpoint.
     PATCH/PUT nested details with validation.
     """
+    title = StrictCharField()
     details = OfferDetailWriteSerializer(many=True)
     user_details = UserDetailsSerializer(source='user', read_only=True)
 
     class Meta:
         model = Offer
         fields = [
-            'id',
-            'user',
-            'title',
-            'image',
-            'description',
-            'created_at',
-            'updated_at',
-            'details',
-            'min_price',
-            'min_delivery_time',
-            'user_details',
+            'id', 'user', 'title', 'image', 'description', 'created_at',
+            'updated_at', 'details', 'min_price', 'min_delivery_time', 'user_details',
         ]
 
-    def validate_title(self, value):
-        """
-        Ensures that the title is a string and not a number.
-        """
-        if not isinstance(value, str):
-            raise serializers.ValidationError("Title must be a string.")
-        return value
+    # ACHTUNG: KEIN validate_details mit Mindestprüfung hier!
+    # PATCH/PUT braucht keinen Min-Check!
 
     def update(self, instance, validated_data):
         """
         Updates offer and its details (nested, PATCH logic).
+        Only specified fields are updated (PATCH logic).
         """
         details_data = validated_data.pop('details', None)
         for attr, value in validated_data.items():
@@ -171,82 +135,32 @@ class OfferDetailSerializer(serializers.ModelSerializer):
                             setattr(d, key, val)
                     d.save()
                 elif not detail_id:
-                    OfferDetail.objects.create(offer=instance, **detail)
+                    OfferDetail.objects.create(offer=instance, **clean_detail_data(detail))
         return instance
 
-class OfferDetailCreateSerializer(serializers.ModelSerializer):
+class OfferListSerializer(serializers.ModelSerializer):
     """
-    Serializer for creating offer details in nested POST requests.
+    Serializes offers for the list endpoint.
+    Includes only id and url for offer details.
     """
-    class Meta:
-        model = OfferDetail
-        exclude = ['offer', 'id', 'url']  # id/url set automatically, offer via parent
-
-class StrictCharField(serializers.CharField):
-    def to_internal_value(self, data):
-        if not isinstance(data, str):
-            raise serializers.ValidationError("Must be a string.")
-        return super().to_internal_value(data)
-
-class OfferDetailSerializer(serializers.ModelSerializer):
-    """
-    Serializes a single offer for the detail endpoint.
-    PATCH/PUT nested details with validation.
-    """
-    title = StrictCharField()
-    details = OfferDetailWriteSerializer(many=True)
+    details = OfferDetailShortSerializer(many=True, read_only=True)
     user_details = UserDetailsSerializer(source='user', read_only=True)
 
     class Meta:
         model = Offer
         fields = [
-            'id',
-            'user',
-            'title',
-            'image',
-            'description',
-            'created_at',
-            'updated_at',
-            'details',
-            'min_price',
-            'min_delivery_time',
-            'user_details',
+            'id', 'user', 'title', 'image', 'description', 'created_at',
+            'updated_at', 'details', 'min_price', 'min_delivery_time', 'user_details',
         ]
 
-    def validate_details(self, value):
-        """
-        Ensures that at least 3 offer details are provided.
-        """
-        if len(value) < 3:
-            raise serializers.ValidationError(
-                "At least 3 offer details are required."
-            )
-        return value
-
-    def create(self, validated_data):
-        """
-        Creates an offer with nested offer details.
-        """
-        details_data = validated_data.pop('details')
-        user = self.context['request'].user
-        offer = Offer.objects.create(user=user, **validated_data)
-        for detail_data in details_data:
-            OfferDetail.objects.create(offer=offer, **detail_data)
-        return offer
-    
 class OfferDetailPublicSerializer(serializers.ModelSerializer):
     price = serializers.FloatField()
 
     class Meta:
         model = OfferDetail
         fields = [
-            'id',
-            'title',
-            'revisions',
-            'delivery_time_in_days',
-            'price',
-            'features',
-            'offer_type',
+            'id', 'title', 'revisions', 'delivery_time_in_days', 'price',
+            'features', 'offer_type',
         ]
 
 class OfferPublicSerializer(serializers.ModelSerializer):
@@ -255,9 +169,5 @@ class OfferPublicSerializer(serializers.ModelSerializer):
     class Meta:
         model = Offer
         fields = [
-            'id',
-            'title',
-            'image',
-            'description',
-            'details',
+            'id', 'title', 'image', 'description', 'details',
         ]
