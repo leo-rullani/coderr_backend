@@ -373,3 +373,73 @@ class TestOrderCountAPI:
         url = reverse("order-count", args=[99999])
         response = api_client.get(url)
         assert response.status_code == 404
+@pytest.mark.django_db
+class TestCompletedOrderCountAPI:
+    @pytest.fixture
+    def api_client(self):
+        return APIClient()
+
+    @pytest.fixture
+    def business(self, django_user_model):
+        return django_user_model.objects.create_user(username="firma", password="test123", role="business")
+
+    @pytest.fixture
+    def customer(self, django_user_model):
+        return django_user_model.objects.create_user(username="kunde", password="test123", role="customer")
+
+    @pytest.fixture
+    def completed_orders(self, business, customer):
+        # 3 completed, 2 in_progress
+        from orders_app.models import Order
+        for _ in range(3):
+            Order.objects.create(
+                customer_user=customer,
+                business_user=business,
+                title="Done",
+                revisions=1,
+                delivery_time_in_days=1,
+                price=10,
+                features=[],
+                offer_type="basic",
+                status="completed",
+            )
+        for _ in range(2):
+            Order.objects.create(
+                customer_user=customer,
+                business_user=business,
+                title="WIP",
+                revisions=1,
+                delivery_time_in_days=1,
+                price=10,
+                features=[],
+                offer_type="basic",
+                status="in_progress",
+            )
+
+    def test_completed_order_count_success(self, api_client, business, completed_orders):
+        """
+        GET /api/completed-order-count/{business_user_id}/ - returns correct count for completed orders
+        """
+        api_client.force_authenticate(user=business)
+        url = reverse("completed-order-count", args=[business.id])
+        response = api_client.get(url)
+        assert response.status_code == 200
+        assert response.json() == {"completed_order_count": 3}
+
+    def test_completed_order_count_unauthenticated(self, api_client, business, completed_orders):
+        """
+        GET /api/completed-order-count/{business_user_id}/ - 401 for unauthenticated
+        """
+        url = reverse("completed-order-count", args=[business.id])
+        response = api_client.get(url)
+        assert response.status_code == 401
+
+    def test_completed_order_count_user_not_found(self, api_client, business):
+        """
+        GET /api/completed-order-count/99999/ - 404 for missing business user
+        """
+        api_client.force_authenticate(user=business)
+        url = reverse("completed-order-count", args=[99999])
+        response = api_client.get(url)
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Business user not found."
