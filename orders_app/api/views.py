@@ -2,14 +2,18 @@ from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from django.db import models
 from orders_app.models import Order
-from orders_app.api.serializers import OrderSerializer, OrderCreateSerializer
-from orders_app.api.permissions import IsCustomerUser
+from orders_app.api.serializers import (
+    OrderSerializer,
+    OrderCreateSerializer,
+    OrderStatusUpdateSerializer,
+)
+from orders_app.api.permissions import IsCustomerUser, IsOrderBusinessUser
 
 class OrderListCreateAPIView(generics.ListCreateAPIView):
     """
     API view for listing and creating orders.
 
-    GET: Returns a list of orders where the current user is either the customer or the business partner.
+    GET: Returns a paginated list of orders where the current user is either the customer or the business partner.
     POST: Allows only authenticated users with role 'customer' to create a new order from an OfferDetail.
     """
     permission_classes = [permissions.IsAuthenticated]
@@ -17,9 +21,6 @@ class OrderListCreateAPIView(generics.ListCreateAPIView):
     def get_queryset(self):
         """
         Returns all orders related to the current user as customer or business user.
-
-        Returns:
-            QuerySet: A queryset of Order instances.
         """
         user = self.request.user
         return Order.objects.filter(
@@ -29,9 +30,6 @@ class OrderListCreateAPIView(generics.ListCreateAPIView):
     def get_serializer_class(self):
         """
         Returns the appropriate serializer class depending on the request method.
-
-        Returns:
-            Serializer: The serializer class for the request.
         """
         if self.request.method == "POST":
             return OrderCreateSerializer
@@ -40,9 +38,6 @@ class OrderListCreateAPIView(generics.ListCreateAPIView):
     def get_permissions(self):
         """
         Returns the permission classes for the current request.
-
-        Returns:
-            list: List of permission classes to apply.
         """
         if self.request.method == "POST":
             return [permissions.IsAuthenticated(), IsCustomerUser()]
@@ -51,12 +46,6 @@ class OrderListCreateAPIView(generics.ListCreateAPIView):
     def create(self, request, *args, **kwargs):
         """
         Handles creation of a new order using an OfferDetail.
-
-        Args:
-            request (Request): The HTTP request object.
-
-        Returns:
-            Response: The HTTP response with the created order data.
         """
         serializer = OrderCreateSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
@@ -69,20 +58,59 @@ class OrderDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
     API view for retrieving, updating, or deleting a single order.
 
     GET: Retrieves an order by id if the user is involved.
-    PATCH/PUT: Updates the order (ownership check optional).
-    DELETE: Deletes the order (ownership check optional).
+    PATCH: Only the business user (role 'business') can update status (and ONLY status!).
+    DELETE: Deletes the order.
     """
-    serializer_class = OrderSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        """
+        PATCH: Only business_user ('business') can update status.
+        Other: Any involved user.
+        """
+        if self.request.method == "PATCH":
+            return [permissions.IsAuthenticated(), IsOrderBusinessUser()]
+        return [permissions.IsAuthenticated()]
+
+    def get_serializer_class(self):
+        """
+        PATCH: Use OrderStatusUpdateSerializer (only status allowed).
+        Other: Use OrderSerializer.
+        """
+        if self.request.method == "PATCH":
+            return OrderStatusUpdateSerializer
+        return OrderSerializer
 
     def get_queryset(self):
         """
-        Returns all orders related to the current user as customer or business user.
-
-        Returns:
-            QuerySet: A queryset of Order instances.
+        Gibt ALLE Orders zurück (damit auch andere Business-User 403 kriegen, nicht 404!)
         """
-        user = self.request.user
-        return Order.objects.filter(
-            models.Q(customer_user=user) | models.Q(business_user=user)
-        )
+        return Order.objects.all()
+
+    def check_object_permissions(self, request, obj):
+        """
+        Für GET/DELETE: Nur customer oder business_user dürfen überhaupt lesen/löschen.
+        Für PATCH: Permission wird in IsOrderBusinessUser gemacht (nur business_user darf patchen).
+        """
+        if request.method in ("GET", "DELETE"):
+            if not (obj.customer_user == request.user or obj.business_user == request.user):
+                self.permission_denied(request, message="Not allowed to access this order.")
+        return super().check_object_permissions(request, obj)
+
+    def partial_update(self, request, *args, **kwargs):
+        """
+        PATCH: Updates only the 'status' field if the user is the business user.
+        Only 'status' allowed, any other field = 400 error!
+        """
+        if set(request.data.keys()) != {"status"}:
+            return Response(
+                {"detail": "Only 'status' field can be updated via PATCH."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        instance.refresh_from_db()
+        output_serializer = OrderSerializer(instance)
+        return Response(output_serializer.data, status=status.HTTP_200_OK)

@@ -53,7 +53,7 @@ class OrderCreateSerializer(serializers.Serializer):
         try:
             offer_detail = OfferDetail.objects.get(id=value)
         except OfferDetail.DoesNotExist:
-            raise NotFound("OfferDetail not found.")  # <-- Gibt 404 zurück!
+            raise NotFound("OfferDetail not found.")  # Gibt 404 zurück!
         return value
     
     def create(self, validated_data):
@@ -90,3 +90,31 @@ class OrderCreateSerializer(serializers.Serializer):
             offer_type=offer_detail.offer_type,
             status="in_progress",
         )
+
+class OrderStatusUpdateSerializer(serializers.ModelSerializer):
+    """
+    Serializer for updating only the status of an order via PATCH.
+
+    Only allows one of the allowed status values, no other fields.
+    """
+    class Meta:
+        model = Order
+        fields = ["status"]
+
+    def validate_status(self, value):
+        """
+        Validates that the status is one of the allowed values.
+
+        Args:
+            value (str): The status value.
+
+        Returns:
+            str: The validated status.
+
+        Raises:
+            ValidationError: If the status is not allowed.
+        """
+        allowed = ["in_progress", "completed", "cancelled"]
+        if value not in allowed:
+            raise serializers.ValidationError(f"Status must be one of {allowed}.")
+        return value
