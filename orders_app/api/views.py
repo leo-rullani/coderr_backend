@@ -1,5 +1,6 @@
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from django.db import models
 from orders_app.models import Order
 from orders_app.api.serializers import (
@@ -8,6 +9,7 @@ from orders_app.api.serializers import (
     OrderStatusUpdateSerializer,
 )
 from orders_app.api.permissions import IsCustomerUser, IsOrderBusinessUser
+from django.contrib.auth import get_user_model
 
 class OrderListCreateAPIView(generics.ListCreateAPIView):
     """
@@ -97,10 +99,8 @@ class OrderDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
         Für DELETE: Nur Admin (IsAdminUser) und Order-Beteiligte sehen 403, Rest 404.
         """
         if request.method in ("GET", "DELETE"):
-            # Für Admins: dürfen immer alles löschen
             if request.method == "DELETE" and request.user.is_staff:
                 return super().check_object_permissions(request, obj)
-            # Für andere: Zugriff nur, wenn Kunde oder Business-User beteiligt ist
             if not (obj.customer_user == request.user or obj.business_user == request.user):
                 self.permission_denied(request, message="Not allowed to access this order.")
         return super().check_object_permissions(request, obj)
@@ -122,3 +122,32 @@ class OrderDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
         instance.refresh_from_db()
         output_serializer = OrderSerializer(instance)
         return Response(output_serializer.data, status=status.HTTP_200_OK)
+
+class OrderCountAPIView(APIView):
+    """
+    GET: Gibt die Anzahl der laufenden Bestellungen ('in_progress') eines bestimmten Geschäftsnutzers zurück.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, business_user_id):
+        """
+        Returns the order count for a business user with status 'in_progress'.
+
+        Args:
+            business_user_id (int): Die ID des Geschäftsnutzers
+
+        Returns:
+            200: {"order_count": <int>}
+            401: Not authenticated
+            404: Business user not found
+        """
+        User = get_user_model()
+        try:
+            business_user = User.objects.get(id=business_user_id, role="business")
+        except User.DoesNotExist:
+            return Response(
+                {"detail": "Business user not found."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        count = Order.objects.filter(business_user=business_user, status="in_progress").count()
+        return Response({"order_count": count}, status=status.HTTP_200_OK)
