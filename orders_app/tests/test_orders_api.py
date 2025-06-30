@@ -162,8 +162,6 @@ class TestOrderAPI:
         assert response.status_code in (201, 200)
         assert response.json()["title"] == offer_detail.title
 
-    # PATCH-Tests ----------------------------------
-
     def test_patch_status_success(self, api_client, business, order):
         """
         PATCH /api/orders/{id}/ - success for business_user, status updated
@@ -334,7 +332,7 @@ class TestOrderCountAPI:
                 offer_type="basic",
                 status="in_progress",
             )
-        # Eine abgeschlossene Order (zählt nicht!)
+            
         Order.objects.create(
             customer_user=customer,
             business_user=business,
@@ -389,7 +387,7 @@ class TestCompletedOrderCountAPI:
 
     @pytest.fixture
     def completed_orders(self, business, customer):
-        # 3 completed, 2 in_progress
+        
         from orders_app.models import Order
         for _ in range(3):
             Order.objects.create(
