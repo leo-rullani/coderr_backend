@@ -32,6 +32,8 @@ class OfferDetailFullSerializer(serializers.ModelSerializer):
     """
     Serializes all required fields for offer details (used in offer detail endpoint and creation).
     """
+    url = serializers.SerializerMethodField()
+
     class Meta:
         model = OfferDetail
         fields = [
@@ -44,6 +46,17 @@ class OfferDetailFullSerializer(serializers.ModelSerializer):
             'offer_type',
             'url',
         ]
+
+    def get_url(self, obj):
+        """
+        Returns the absolute URL for the offer detail object.
+        """
+        request = self.context.get('request')
+        # Build absolute URL (http://127.0.0.1:8000/api/offerdetails/<id>/)
+        relative_url = obj.get_absolute_url()
+        if request is not None:
+            return request.build_absolute_uri(relative_url)
+        return relative_url
 
 class OfferListSerializer(serializers.ModelSerializer):
     """

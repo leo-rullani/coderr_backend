@@ -5,7 +5,8 @@ from offers_app.models import Offer, OfferDetail
 from offers_app.api.serializers import (
     OfferListSerializer,
     OfferDetailSerializer,
-    OfferDetailCreateSerializer,  # Wichtig: Importiere diesen Serializer!
+    OfferDetailCreateSerializer,
+    OfferDetailFullSerializer,
 )
 from offers_app.api.filters import OfferFilter
 
@@ -104,4 +105,13 @@ class OfferDetailAPIView(generics.RetrieveAPIView):
     """
     queryset = Offer.objects.all().select_related('user')
     serializer_class = OfferDetailSerializer
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [IsAuthenticated]
+
+class OfferDetailDetailAPIView(generics.RetrieveAPIView):
+    """
+    API endpoint for retrieving a single offer detail by id.
+    Returns all fields needed for nested 'details' in offer response.
+    """
+    queryset = OfferDetail.objects.all()
+    serializer_class = OfferDetailFullSerializer
+    permission_classes = [IsAuthenticated]
