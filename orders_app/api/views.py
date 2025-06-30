@@ -59,17 +59,20 @@ class OrderDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
 
     GET: Retrieves an order by id if the user is involved.
     PATCH: Only the business user (role 'business') can update status (and ONLY status!).
-    DELETE: Deletes the order.
+    DELETE: Deletes the order (only for admin/staff!).
     """
     permission_classes = [permissions.IsAuthenticated]
 
     def get_permissions(self):
         """
         PATCH: Only business_user ('business') can update status.
-        Other: Any involved user.
+        DELETE: Only staff/admin can delete.
+        Other: Any involved user (customer or business).
         """
         if self.request.method == "PATCH":
             return [permissions.IsAuthenticated(), IsOrderBusinessUser()]
+        elif self.request.method == "DELETE":
+            return [permissions.IsAuthenticated(), permissions.IsAdminUser()]
         return [permissions.IsAuthenticated()]
 
     def get_serializer_class(self):
@@ -91,8 +94,13 @@ class OrderDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
         """
         Für GET/DELETE: Nur customer oder business_user dürfen überhaupt lesen/löschen.
         Für PATCH: Permission wird in IsOrderBusinessUser gemacht (nur business_user darf patchen).
+        Für DELETE: Nur Admin (IsAdminUser) und Order-Beteiligte sehen 403, Rest 404.
         """
         if request.method in ("GET", "DELETE"):
+            # Für Admins: dürfen immer alles löschen
+            if request.method == "DELETE" and request.user.is_staff:
+                return super().check_object_permissions(request, obj)
+            # Für andere: Zugriff nur, wenn Kunde oder Business-User beteiligt ist
             if not (obj.customer_user == request.user or obj.business_user == request.user):
                 self.permission_denied(request, message="Not allowed to access this order.")
         return super().check_object_permissions(request, obj)

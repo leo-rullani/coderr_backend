@@ -229,3 +229,77 @@ class TestOrderAPI:
         url = reverse("order-detail", args=[order.id])
         response = api_client.patch(url, {"status": "completed", "title": "hacked"}, format="json")
         assert response.status_code == 400
+
+@pytest.mark.django_db
+class TestOrderDeleteAPI:
+    @pytest.fixture
+    def admin(self, django_user_model):
+        return django_user_model.objects.create_user(
+            username="admin", password="test123", is_staff=True
+        )
+
+    @pytest.fixture
+    def customer(self, django_user_model):
+        return django_user_model.objects.create_user(
+            username="kunde", password="test123", role="customer"
+        )
+
+    @pytest.fixture
+    def business(self, django_user_model):
+        return django_user_model.objects.create_user(
+            username="firma", password="test123", role="business"
+        )
+
+    @pytest.fixture
+    def order(self, customer, business):
+        from orders_app.models import Order
+        return Order.objects.create(
+            customer_user=customer,
+            business_user=business,
+            title="Patch Test",
+            revisions=1,
+            delivery_time_in_days=2,
+            price=99,
+            features=["f1"],
+            offer_type="basic",
+            status="in_progress"
+        )
+
+    @pytest.fixture
+    def api_client(self):
+        return APIClient()
+
+    def test_delete_order_success_for_admin(self, api_client, admin, order):
+        """
+        DELETE /api/orders/{id}/ - success for admin user
+        """
+        api_client.force_authenticate(user=admin)
+        url = reverse("order-detail", args=[order.id])
+        response = api_client.delete(url)
+        assert response.status_code == 204
+
+    def test_delete_order_forbidden_for_customer(self, api_client, customer, order):
+        """
+        DELETE /api/orders/{id}/ - 403 for customer
+        """
+        api_client.force_authenticate(user=customer)
+        url = reverse("order-detail", args=[order.id])
+        response = api_client.delete(url)
+        assert response.status_code == 403
+
+    def test_delete_order_unauthenticated(self, api_client, order):
+        """
+        DELETE /api/orders/{id}/ - 401 for unauthenticated
+        """
+        url = reverse("order-detail", args=[order.id])
+        response = api_client.delete(url)
+        assert response.status_code == 401
+
+    def test_delete_order_not_found(self, api_client, admin):
+        """
+        DELETE /api/orders/99999/ - 404 for non-existing order
+        """
+        api_client.force_authenticate(user=admin)
+        url = reverse("order-detail", args=[99999])
+        response = api_client.delete(url)
+        assert response.status_code == 404
