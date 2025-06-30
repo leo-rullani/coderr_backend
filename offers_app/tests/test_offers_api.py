@@ -133,7 +133,7 @@ def test_offers_list_success():
         min_price=100,
         min_delivery_time=7,
     )
-    # Angepasst: KEIN url-Feld!
+
     OfferDetail.objects.create(
         offer=offer,
         title="Basic Design",
@@ -206,7 +206,6 @@ def test_offer_post_400_less_than_3_details(business_user, offer_data):
     client = APIClient()
     client.force_authenticate(user=business_user)
     url = reverse('offer-list-create')
-    # Nutze deepcopy, damit offer_data für andere Tests nicht verändert wird!
     data = copy.deepcopy(offer_data)
     data["details"] = [data["details"][0]]  # only 1 detail
     response = client.post(url, data, format='json')
@@ -335,3 +334,113 @@ def test_offer_patch_404_not_found(business_user):
     data = {"title": "Nope"}
     response = client.patch(url, data, format="json")
     assert response.status_code == 404
+
+@pytest.mark.django_db
+class TestOfferDeleteAPI:
+    @pytest.fixture
+    def owner(self, django_user_model):
+        return django_user_model.objects.create_user(username="owner", password="test123", role="business")
+
+    @pytest.fixture
+    def other_user(self, django_user_model):
+        return django_user_model.objects.create_user(username="other", password="test123", role="business")
+
+    @pytest.fixture
+    def offer(self, owner):
+        from offers_app.models import Offer
+        return Offer.objects.create(
+            user=owner,
+            title="Test-Angebot",
+            description="Beschreibung",
+        )
+
+    @pytest.fixture
+    def api_client(self):
+        return APIClient()
+
+    def test_delete_offer_unauthenticated(self, api_client, offer):
+        """DELETE should fail with 401 if not authenticated."""
+        url = reverse("offer-detail", args=[offer.id])
+        response = api_client.delete(url)
+        assert response.status_code == 401
+
+    def test_delete_offer_forbidden_for_non_owner(self, api_client, offer, other_user):
+        """DELETE should fail with 403 if user is not owner."""
+        api_client.force_authenticate(user=other_user)
+        url = reverse("offer-detail", args=[offer.id])
+        response = api_client.delete(url)
+        assert response.status_code == 403
+
+    def test_delete_offer_success_for_owner(self, api_client, offer, owner):
+        """DELETE should succeed with 204 for owner."""
+        api_client.force_authenticate(user=owner)
+        url = reverse("offer-detail", args=[offer.id])
+        response = api_client.delete(url)
+        assert response.status_code == 204
+
+    def test_delete_offer_not_found(self, api_client, owner):
+        """DELETE should fail with 404 if offer does not exist."""
+        api_client.force_authenticate(user=owner)
+        url = reverse("offer-detail", args=[9999])  # Very high, does not exist
+        response = api_client.delete(url)
+        assert response.status_code == 404
+
+@pytest.mark.django_db
+class TestOfferDetailRetrieveAPI:
+    @pytest.fixture
+    def user(self, django_user_model):
+        return django_user_model.objects.create_user(username="basic", password="test123")
+
+    @pytest.fixture
+    def offer(self, user):
+        from offers_app.models import Offer
+        return Offer.objects.create(
+            user=user,
+            title="Some Offer",
+            description="Beschreibung",
+        )
+
+    @pytest.fixture
+    def offer_detail(self, offer):
+        from offers_app.models import OfferDetail
+        return OfferDetail.objects.create(
+            offer=offer,
+            title="Basic Design",
+            revisions=2,
+            delivery_time_in_days=5,
+            price=100,
+            features=["Logo Design", "Visitenkarte"],
+            offer_type="basic",
+        )
+
+    @pytest.fixture
+    def api_client(self):
+        return APIClient()
+
+    def test_retrieve_offerdetail_authenticated(self, api_client, user, offer_detail):
+        """GET should return 200 and detail data if authenticated."""
+        api_client.force_authenticate(user=user)
+        url = reverse("offerdetail-detail", args=[offer_detail.id])
+        response = api_client.get(url)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == offer_detail.id
+        assert data["title"] == "Basic Design"
+        assert data["revisions"] == 2
+        assert data["delivery_time_in_days"] == 5
+        assert float(data["price"]) == 100.0
+        assert data["features"] == ["Logo Design", "Visitenkarte"]
+        assert data["offer_type"] == "basic"
+
+    def test_retrieve_offerdetail_unauthenticated(self, api_client, offer_detail):
+        """GET should fail with 401 if not authenticated."""
+        url = reverse("offerdetail-detail", args=[offer_detail.id])
+        response = api_client.get(url)
+        assert response.status_code == 401
+
+    def test_retrieve_offerdetail_not_found(self, api_client, user):
+        """GET should fail with 404 if offer detail does not exist."""
+        api_client.force_authenticate(user=user)
+        url = reverse("offerdetail-detail", args=[9999])
+        response = api_client.get(url)
+        assert response.status_code == 404

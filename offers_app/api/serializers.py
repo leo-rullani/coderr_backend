@@ -31,19 +31,20 @@ class OfferDetailShortSerializer(serializers.ModelSerializer):
 
     def get_url(self, obj):
         return f"/offerdetails/{obj.id}/"
-
+    
 class OfferDetailFullSerializer(serializers.ModelSerializer):
     """
     Serializes all required fields for offer details (used in offer detail endpoint and creation).
     """
-    url = serializers.SerializerMethodField()
+    price = serializers.FloatField()
 
     class Meta:
         model = OfferDetail
         fields = [
             'id', 'title', 'revisions', 'delivery_time_in_days', 'price',
-            'features', 'offer_type', 'url',
+            'features', 'offer_type',
         ]
+
 
     def get_url(self, obj):
         request = self.context.get('request')

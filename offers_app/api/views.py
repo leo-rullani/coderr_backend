@@ -56,10 +56,11 @@ class OfferListCreateAPIView(generics.ListCreateAPIView):
         """
         serializer.save()
 
-class OfferDetailAPIView(generics.RetrieveUpdateAPIView):
+class OfferDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
     """
-    API endpoint for retrieving or updating a single offer by id.
-    PATCH/PUT updates only specified fields, only by owner.
+    API endpoint for retrieving, updating, or deleting a single offer by id.
+    PATCH/PUT and DELETE are only allowed by the owner.
+    DELETE returns 204 No Content on success.
     """
     queryset = Offer.objects.all().select_related('user')
     serializer_class = OfferDetailSerializer
