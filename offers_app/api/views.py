@@ -7,8 +7,13 @@ from offers_app.api.serializers import (
     OfferDetailSerializer,
     OfferDetailCreateSerializer,
     OfferDetailFullSerializer,
+    OfferPublicSerializer,
 )
+from offers_app.api.permissions import IsOwner
 from offers_app.api.filters import OfferFilter
+
+# OPTIONAL: Bald extra Datei offers_app/api/permissions.py für IsOwner!
+# from offers_app.api.permissions import IsOwner
 
 class IsBusinessUser(permissions.BasePermission):
     """
@@ -17,53 +22,9 @@ class IsBusinessUser(permissions.BasePermission):
     def has_permission(self, request, view):
         return request.user.is_authenticated and getattr(request.user, "role", None) == "business"
 
-class OfferCreateSerializer(serializers.ModelSerializer):
-    """
-    Serializer for creating offers with nested offer details.
-    Enforces at least 3 details per offer.
-    """
-    details = OfferDetailCreateSerializer(many=True)
-
-    class Meta:
-        model = Offer
-        fields = [
-            'id',
-            'title',
-            'image',
-            'description',
-            'details',
-        ]
-        extra_kwargs = {
-            'user': {'read_only': True},
-        }
-
-    def validate_details(self, value):
-        """
-        Ensures that at least 3 offer details are provided.
-        """
-        if len(value) < 3:
-            raise serializers.ValidationError(
-                "At least 3 offer details are required."
-            )
-        return value
-
-    def create(self, validated_data):
-        """
-        Creates an offer with nested offer details.
-        """
-        details_data = validated_data.pop('details')
-        validated_data.pop('user', None)  # Remove user if present (safety)
-        user = self.context['request'].user
-        offer = Offer.objects.create(user=user, **validated_data)
-        for detail_data in details_data:
-            OfferDetail.objects.create(offer=offer, **detail_data)
-        return offer
-
 class OfferListCreateAPIView(generics.ListCreateAPIView):
     """
     API endpoint for listing offers (GET) and creating new offers (POST).
-    - GET: Public, paginated list with only id and url in details.
-    - POST: Only authenticated business users can create offers with at least 3 details.
     """
     queryset = Offer.objects.all().select_related('user')
     filter_backends = [
@@ -89,7 +50,7 @@ class OfferListCreateAPIView(generics.ListCreateAPIView):
         Chooses serializer based on request method.
         """
         if self.request.method == "POST":
-            return OfferCreateSerializer
+            return OfferDetailCreateSerializer
         return OfferListSerializer
 
     def perform_create(self, serializer):
@@ -98,14 +59,14 @@ class OfferListCreateAPIView(generics.ListCreateAPIView):
         """
         serializer.save(user=self.request.user)
 
-class OfferDetailAPIView(generics.RetrieveAPIView):
+class OfferDetailAPIView(generics.RetrieveUpdateAPIView):
     """
-    API endpoint that returns a single offer by id,
-    with all nested detail fields, as required by the API doc.
+    API endpoint for retrieving or updating a single offer by id.
+    PATCH/PUT updates only specified fields, only by owner.
     """
     queryset = Offer.objects.all().select_related('user')
     serializer_class = OfferDetailSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]  # oder [IsAuthenticated, IsOwner]
 
 class OfferDetailDetailAPIView(generics.RetrieveAPIView):
     """
@@ -115,3 +76,8 @@ class OfferDetailDetailAPIView(generics.RetrieveAPIView):
     queryset = OfferDetail.objects.all()
     serializer_class = OfferDetailFullSerializer
     permission_classes = [IsAuthenticated]
+
+class OfferDetailAPIView(generics.RetrieveUpdateAPIView):
+    queryset = Offer.objects.all().select_related('user')
+    serializer_class = OfferPublicSerializer
+    permission_classes = [IsAuthenticated, IsOwner]

@@ -82,12 +82,50 @@ class OfferListSerializer(serializers.ModelSerializer):
             'user_details',
         ]
 
+class OfferDetailWriteSerializer(serializers.ModelSerializer):
+    """
+    Serializer for writing/updating offer details.
+    Ensures all required fields are present.
+    """
+    class Meta:
+        model = OfferDetail
+        exclude = ['offer', 'id', 'url']
+
+    def validate(self, data):
+        """
+        Validates required fields for each offer detail.
+        """
+        required = ['title', 'revisions', 'delivery_time_in_days', 'price', 'features', 'offer_type']
+        missing = [f for f in required if data.get(f) in [None, ""]]
+        if missing:
+            raise serializers.ValidationError(f"Missing fields: {', '.join(missing)}")
+        return data
+
+class OfferDetailWriteSerializer(serializers.ModelSerializer):
+    """
+    Serializer for writing/updating offer details.
+    Ensures all required fields are present.
+    """
+    class Meta:
+        model = OfferDetail
+        exclude = ['offer', 'id', 'url']
+
+    def validate(self, data):
+        """
+        Validates required fields for each offer detail.
+        """
+        required = ['title', 'revisions', 'delivery_time_in_days', 'price', 'features', 'offer_type']
+        missing = [f for f in required if data.get(f) in [None, ""]]
+        if missing:
+            raise serializers.ValidationError(f"Missing fields: {', '.join(missing)}")
+        return data
+
 class OfferDetailSerializer(serializers.ModelSerializer):
     """
     Serializes a single offer for the detail endpoint.
-    Includes all required fields for offer details.
+    PATCH/PUT nested details with validation.
     """
-    details = OfferDetailFullSerializer(many=True, read_only=True)
+    details = OfferDetailWriteSerializer(many=True)
     user_details = UserDetailsSerializer(source='user', read_only=True)
 
     class Meta:
@@ -106,6 +144,36 @@ class OfferDetailSerializer(serializers.ModelSerializer):
             'user_details',
         ]
 
+    def validate_title(self, value):
+        """
+        Ensures that the title is a string and not a number.
+        """
+        if not isinstance(value, str):
+            raise serializers.ValidationError("Title must be a string.")
+        return value
+
+    def update(self, instance, validated_data):
+        """
+        Updates offer and its details (nested, PATCH logic).
+        """
+        details_data = validated_data.pop('details', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        if details_data is not None:
+            existing = {d.id: d for d in instance.details.all()}
+            for detail in details_data:
+                detail_id = detail.get('id')
+                if detail_id and detail_id in existing:
+                    d = existing[detail_id]
+                    for key, val in detail.items():
+                        if key != 'id':
+                            setattr(d, key, val)
+                    d.save()
+                elif not detail_id:
+                    OfferDetail.objects.create(offer=instance, **detail)
+        return instance
+
 class OfferDetailCreateSerializer(serializers.ModelSerializer):
     """
     Serializer for creating offer details in nested POST requests.
@@ -114,21 +182,35 @@ class OfferDetailCreateSerializer(serializers.ModelSerializer):
         model = OfferDetail
         exclude = ['offer', 'id', 'url']  # id/url set automatically, offer via parent
 
-class OfferCreateSerializer(serializers.ModelSerializer):
+class StrictCharField(serializers.CharField):
+    def to_internal_value(self, data):
+        if not isinstance(data, str):
+            raise serializers.ValidationError("Must be a string.")
+        return super().to_internal_value(data)
+
+class OfferDetailSerializer(serializers.ModelSerializer):
     """
-    Serializer for creating offers with nested offer details.
-    Enforces at least 3 details per offer.
+    Serializes a single offer for the detail endpoint.
+    PATCH/PUT nested details with validation.
     """
-    details = OfferDetailCreateSerializer(many=True)
+    title = StrictCharField()
+    details = OfferDetailWriteSerializer(many=True)
+    user_details = UserDetailsSerializer(source='user', read_only=True)
 
     class Meta:
         model = Offer
         fields = [
             'id',
+            'user',
             'title',
             'image',
             'description',
+            'created_at',
+            'updated_at',
             'details',
+            'min_price',
+            'min_delivery_time',
+            'user_details',
         ]
 
     def validate_details(self, value):
@@ -151,3 +233,31 @@ class OfferCreateSerializer(serializers.ModelSerializer):
         for detail_data in details_data:
             OfferDetail.objects.create(offer=offer, **detail_data)
         return offer
+    
+class OfferDetailPublicSerializer(serializers.ModelSerializer):
+    price = serializers.FloatField()
+
+    class Meta:
+        model = OfferDetail
+        fields = [
+            'id',
+            'title',
+            'revisions',
+            'delivery_time_in_days',
+            'price',
+            'features',
+            'offer_type',
+        ]
+
+class OfferPublicSerializer(serializers.ModelSerializer):
+    details = OfferDetailPublicSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Offer
+        fields = [
+            'id',
+            'title',
+            'image',
+            'description',
+            'details',
+        ]
