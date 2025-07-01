@@ -29,8 +29,17 @@ Thumbs.db
 
 # Logs, Backups, Dumps
 *.bak
+*.backup
 *.log
+*.json              # falls keine offiziellen Beispieldaten im Repo sein sollen!
+db_backup*
 backup_db.sh
+backup/
+backups/
+tmp/
+temp/
+notes/
+notizen/
 
 # Test / Coverage / Tox
 .coverage
