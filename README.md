@@ -131,7 +131,7 @@ MIT
 ## Support
 
 Fragen?
-Issues direkt im GitHub-Repo eröffnen – oder über das interne Supportboard der Developer Akademie.
+Issues direkt im GitHub-Repo eröffnen.
 
 ```
 
