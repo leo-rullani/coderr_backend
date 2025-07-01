@@ -7,6 +7,7 @@ from .serializers import (
 )
 from .permissions import IsOwnerProfile
 from django.shortcuts import get_object_or_404
+from rest_framework.exceptions import PermissionDenied
 
 class UserProfileDetailView(generics.RetrieveUpdateAPIView):
     """
@@ -20,10 +21,18 @@ class UserProfileDetailView(generics.RetrieveUpdateAPIView):
 
     def get_object(self):
         """
-        Returns the profile for the user ID in the URL.
+        Returns the UserProfile where the related user's ID matches the URL pk.
         """
         user_id = self.kwargs["pk"]
-        return get_object_or_404(UserProfile, user_id=user_id)
+        return get_object_or_404(UserProfile, user__id=user_id)
+
+    def perform_update(self, serializer):
+        """
+        Ensure only the profile owner can update the profile.
+        """
+        if serializer.instance.user != self.request.user:
+            raise PermissionDenied("You do not have permission to update this profile.")
+        serializer.save()
 
 class BusinessProfileListView(generics.ListAPIView):
     """
