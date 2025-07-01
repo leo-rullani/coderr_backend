@@ -31,7 +31,9 @@ Thumbs.db
 *.bak
 *.backup
 *.log
-*.json              # falls keine offiziellen Beispieldaten im Repo sein sollen!
+*.json              
+db.sqlite3.backup_20250629_193559
+db.sqlite3.backup_20250629_194543
 db_backup*
 backup_db.sh
 backup/
