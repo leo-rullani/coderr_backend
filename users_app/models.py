@@ -6,6 +6,7 @@ class UserProfile(models.Model):
     Extended profile model for both customers and business users.
     """
     user = models.OneToOneField(CustomUser, on_delete=models.CASCADE)
+    is_customer = models.BooleanField(default=False)
     file = models.ImageField(upload_to='profile_pics/', null=True, blank=True)
     uploaded_at = models.DateTimeField(auto_now_add=True, null=True, blank=True) 
     first_name = models.CharField(max_length=50, blank=True, default="")
