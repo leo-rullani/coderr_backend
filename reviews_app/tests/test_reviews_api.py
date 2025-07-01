@@ -82,12 +82,10 @@ class TestReviewListAPI:
 class TestReviewPOST:
     def setup_method(self):
         self.client = APIClient()
-        # Kunden-User (darf bewerten)
         self.customer = User.objects.create_user(username='kunde', password='pw123')
         UserProfile.objects.create(user=self.customer, is_customer=True)
         self.customer2 = User.objects.create_user(username='kunde2', password='pw123')
         UserProfile.objects.create(user=self.customer2, is_customer=True)
-        # Kein Kunde (darf NICHT bewerten)
         self.not_customer = User.objects.create_user(username='notkunde', password='pw123')
         UserProfile.objects.create(user=self.not_customer, is_customer=False)
         self.business = User.objects.create_user(username='business', password='pw123')
@@ -117,13 +115,13 @@ class TestReviewPOST:
             "rating": 4,
             "description": "Gut!"
         }
-        # Erstes Mal: OK
+
         response1 = self.client.post(url, data)
         assert response1.status_code == 201
-        # Zweites Mal: Fehler
         response2 = self.client.post(url, data)
         assert response2.status_code in (400, 403)
-        assert "bereits eine Bewertung" in str(response2.data) or "bereits" in str(response2.data)
+        assert "already reviewed" in str(response2.data["non_field_errors"][0])
+
 
     def test_post_review_unauthenticated(self):
         url = reverse('review-list')
@@ -146,3 +144,95 @@ class TestReviewPOST:
         response = self.client.post(url, data)
         assert response.status_code == 403
         assert "Nur Kunden" in str(response.data) or "customer" in str(response.data)
+    
+    def test_patch_review_by_owner(self):
+        # Kunde erstellt Bewertung
+        review = Review.objects.create(
+            business_user=self.business,
+            reviewer=self.customer,
+            rating=3,
+            description="Guter Service"
+        )
+        self.client.force_authenticate(user=self.customer)
+        url = reverse('review-detail', args=[review.id])
+        data = {
+            "rating": 5,
+            "description": "Noch besser als erwartet!"
+        }
+        response = self.client.patch(url, data)
+        assert response.status_code == 200
+        assert response.data["rating"] == 5
+        assert response.data["description"] == "Noch besser als erwartet!"
+
+    def test_patch_review_forbidden_for_non_owner(self):
+        # Kunde1 erstellt Bewertung, Kunde2 versucht PATCH
+        review = Review.objects.create(
+            business_user=self.business,
+            reviewer=self.customer,
+            rating=3,
+            description="Initial"
+        )
+        self.client.force_authenticate(user=self.customer2)
+        url = reverse('review-detail', args=[review.id])
+        data = {
+            "rating": 1,
+            "description": "Darf ich nicht ändern"
+        }
+        response = self.client.patch(url, data)
+        assert response.status_code == 403
+
+    def test_patch_review_unauthenticated(self):
+        review = Review.objects.create(
+            business_user=self.business,
+            reviewer=self.customer,
+            rating=3,
+            description="Initial"
+        )
+        url = reverse('review-detail', args=[review.id])
+        data = {
+            "rating": 4,
+            "description": "Test"
+        }
+        response = self.client.patch(url, data)
+        assert response.status_code == 401
+
+    def test_patch_review_invalid_rating(self):
+        review = Review.objects.create(
+            business_user=self.business,
+            reviewer=self.customer,
+            rating=3,
+            description="Initial"
+        )
+        self.client.force_authenticate(user=self.customer)
+        url = reverse('review-detail', args=[review.id])
+        data = {
+            "rating": 99,
+            "description": "Unrealistisch"
+        }
+        response = self.client.patch(url, data)
+        assert response.status_code == 400
+        assert "Rating must be between 1 and 5." in str(response.data)
+
+    def test_delete_review_by_owner(self):
+        review = Review.objects.create(
+            business_user=self.business,
+            reviewer=self.customer,
+            rating=3,
+            description="Initial"
+        )
+        self.client.force_authenticate(user=self.customer)
+        url = reverse('review-detail', args=[review.id])
+        response = self.client.delete(url)
+        assert response.status_code == 204
+
+    def test_delete_review_forbidden_for_non_owner(self):
+        review = Review.objects.create(
+            business_user=self.business,
+            reviewer=self.customer,
+            rating=3,
+            description="Initial"
+        )
+        self.client.force_authenticate(user=self.customer2)
+        url = reverse('review-detail', args=[review.id])
+        response = self.client.delete(url)
+        assert response.status_code == 403

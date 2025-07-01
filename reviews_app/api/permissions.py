@@ -1,15 +1,14 @@
 from rest_framework.permissions import BasePermission, SAFE_METHODS
 
-class IsOwnerOrReadOnly(BasePermission):
+class IsReviewerOrReadOnly(BasePermission):
     """
-    Custom permission to only allow owners of a review to edit or delete it.
-    Read permissions are allowed to any request,
-    so GET, HEAD, or OPTIONS requests are always allowed.
-    Write permissions are only allowed to the owner of the review.
+    Custom permission: Only the reviewer (creator) of a review can edit or delete it.
+    Read permissions are allowed for any request.
+    Write permissions are only allowed to the reviewer.
     """
     def has_object_permission(self, request, view, obj):
-        # Read permissions are allowed for any request
+        # Allow safe methods (GET, HEAD, OPTIONS) for everyone
         if request.method in SAFE_METHODS:
             return True
-        # Write permissions are only allowed to the owner
-        return obj.user == request.user
+        # Only the reviewer can PATCH/DELETE
+        return obj.reviewer == request.user

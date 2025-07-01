@@ -26,12 +26,13 @@ class ReviewSerializer(serializers.ModelSerializer):
     def validate(self, data):
         """
         Ensure that a user can only review a business_user once.
+        On create: Prevent duplicate reviews for the same business by the same user.
         """
         request = self.context.get("request")
         user = request.user if request else None
-        business_user = data.get("business_user")
-        # Nur beim Erstellen prüfen, nicht beim Update!
+        business_user = data.get("business_user") or (self.instance.business_user if self.instance else None)
+        # Only check on create, not update
         if self.instance is None and user and business_user:
             if Review.objects.filter(business_user=business_user, reviewer=user).exists():
-                raise serializers.ValidationError("Du hast für dieses Geschäftsprofil bereits eine Bewertung abgegeben.")
+                raise serializers.ValidationError("You have already reviewed this business.")
         return data
