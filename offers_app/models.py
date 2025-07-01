@@ -44,7 +44,6 @@ class OfferDetail(models.Model):
     price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     features = models.JSONField(null=True, blank=True)
     offer_type = models.CharField(max_length=20, null=True, blank=True)
-    # url = models.CharField(max_length=255, blank=True, null=True)  # Entfernt!
 
     def __str__(self):
         """
