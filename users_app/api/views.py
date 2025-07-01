@@ -34,15 +34,21 @@ class BusinessProfileListView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return UserProfile.objects.filter(user__role='business')
+        """
+        Filters all UserProfiles whose linked user has role 'business'.
+        """
+        return UserProfile.objects.filter(user__role="business")
 
 class CustomerProfileListView(generics.ListAPIView):
     """
     Returns a list of all customer user profiles.
     Accessible only to authenticated users.
     """
-    serializer_class = CustomerProfileListSerializer   # <--- NEU!
+    serializer_class = CustomerProfileListSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return UserProfile.objects.filter(user__role='customer')
+        """
+        Filters all UserProfiles whose linked user has role 'customer'.
+        """
+        return UserProfile.objects.filter(user__role="customer")

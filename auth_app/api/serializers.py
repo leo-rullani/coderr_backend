@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from auth_app.models import CustomUser
+from users_app.models import UserProfile      
 from rest_framework.authtoken.models import Token
 
 class RegistrationSerializer(serializers.ModelSerializer):
@@ -23,4 +24,5 @@ class RegistrationSerializer(serializers.ModelSerializer):
         validated_data.pop("repeated_password")
         user = CustomUser.objects.create_user(**validated_data)
         Token.objects.create(user=user)
+        UserProfile.objects.create(user=user)
         return user
