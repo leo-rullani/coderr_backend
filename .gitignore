@@ -3,32 +3,36 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Django stuff:
+# Django/DRF specific
 db.sqlite3
 *.sqlite3
 *.sqlite3-journal
 
-# Environment
-.env
-.env.*
+# Python virtual environments
 venv/
 env/
 ENV/
-*.env
 
-# OS files
+# Environment files (Sicherheitsfalle!)
+.env
+.env.*
+*.env
+local.env
+config.env
+
+# OS-specific files
 .DS_Store
 Thumbs.db
 
-# Backups, dumps, scripts
-backup_db.sh
-*.bak
-*.log
-
-# VS Code
+# Editor/IDE folders
 .vscode/
 
-# Coverage/test
+# Logs, Backups, Dumps
+*.bak
+*.log
+backup_db.sh
+
+# Test / Coverage / Tox
 .coverage
 htmlcov/
 .tox/
