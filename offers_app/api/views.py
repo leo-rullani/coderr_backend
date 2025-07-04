@@ -17,6 +17,9 @@ class IsBusinessUser(permissions.BasePermission):
     Allows access only to users with role 'business'.
     """
     def has_permission(self, request, view):
+        """
+        Returns True if the user is authenticated and has the 'business' role.
+        """
         return request.user.is_authenticated and getattr(request.user, "role", None) == "business"
 
 class OfferListCreateAPIView(generics.ListCreateAPIView):
@@ -36,7 +39,8 @@ class OfferListCreateAPIView(generics.ListCreateAPIView):
 
     def get_permissions(self):
         """
-        Sets permissions for GET (public) and POST (business only).
+        Returns permission classes based on request method.
+        GET requests are public, POST requires business authentication.
         """
         if self.request.method == "POST":
             return [IsAuthenticated(), IsBusinessUser()]
@@ -44,7 +48,7 @@ class OfferListCreateAPIView(generics.ListCreateAPIView):
 
     def get_serializer_class(self):
         """
-        Chooses serializer based on request method.
+        Returns the appropriate serializer based on request method.
         """
         if self.request.method == "POST":
             return OfferCreateSerializer  
@@ -60,11 +64,21 @@ class OfferDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
     """
     API endpoint for retrieving, updating, or deleting a single offer by id.
     PATCH/PUT and DELETE are only allowed by the owner.
+    GET is allowed for all authenticated users.
     DELETE returns 204 No Content on success.
     """
     queryset = Offer.objects.all().select_related('user')
     serializer_class = OfferDetailSerializer
-    permission_classes = [IsAuthenticated, IsOwner]
+
+    def get_permissions(self):
+        """
+        Returns permission classes:
+        - PATCH/PUT/DELETE: Only owner can access.
+        - GET: Any authenticated user can access.
+        """
+        if self.request.method in ["PATCH", "PUT", "DELETE"]:
+            return [IsAuthenticated(), IsOwner()]
+        return [IsAuthenticated()]
 
 class OfferDetailDetailAPIView(generics.RetrieveAPIView):
     """

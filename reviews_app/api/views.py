@@ -5,7 +5,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import OrderingFilter
 from reviews_app.models import Review
 from .serializers import ReviewSerializer
-from .permissions import IsReviewerOrReadOnly  # NEU!
+from .permissions import IsReviewerOrReadOnly 
 
 class ReviewViewSet(ModelViewSet):
     """
