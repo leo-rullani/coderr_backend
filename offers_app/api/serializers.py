@@ -45,7 +45,6 @@ class OfferDetailFullSerializer(serializers.ModelSerializer):
             'features', 'offer_type',
         ]
 
-
     def get_url(self, obj):
         request = self.context.get('request')
         relative_url = obj.get_absolute_url()
@@ -68,11 +67,16 @@ class OfferDetailWriteSerializer(serializers.ModelSerializer):
         if missing:
             raise serializers.ValidationError(f"Missing fields: {', '.join(missing)}")
         return data
+
 class StrictCharField(serializers.CharField):
+    """
+    CharField that only allows strings.
+    """
     def to_internal_value(self, data):
         if not isinstance(data, str):
             raise serializers.ValidationError("Must be a string.")
         return super().to_internal_value(data)
+
 class OfferCreateSerializer(serializers.ModelSerializer):
     """
     Serializer for creating offers with nested offer details.
@@ -113,9 +117,6 @@ class OfferDetailSerializer(serializers.ModelSerializer):
             'updated_at', 'details', 'min_price', 'min_delivery_time', 'user_details',
         ]
 
-    # ACHTUNG: KEIN validate_details mit Mindestprüfung hier!
-    # PATCH/PUT braucht keinen Min-Check!
-
     def update(self, instance, validated_data):
         """
         Updates offer and its details (nested, PATCH logic).
@@ -143,8 +144,9 @@ class OfferListSerializer(serializers.ModelSerializer):
     """
     Serializes offers for the list endpoint.
     Includes only id and url for offer details.
+    Only returns details with valid IDs.
     """
-    details = OfferDetailShortSerializer(many=True, read_only=True)
+    details = serializers.SerializerMethodField()
     user_details = UserDetailsSerializer(source='user', read_only=True)
 
     class Meta:
@@ -154,7 +156,16 @@ class OfferListSerializer(serializers.ModelSerializer):
             'updated_at', 'details', 'min_price', 'min_delivery_time', 'user_details',
         ]
 
+    def get_details(self, obj):
+        valid_details = obj.details.filter(id__isnull=False)
+        print(f"Offer {obj.id}: Details {[d.id for d in valid_details]}")
+        return OfferDetailShortSerializer(valid_details, many=True).data
+
+
 class OfferDetailPublicSerializer(serializers.ModelSerializer):
+    """
+    Serializes all fields for offer details for public view.
+    """
     price = serializers.FloatField()
 
     class Meta:
@@ -165,6 +176,9 @@ class OfferDetailPublicSerializer(serializers.ModelSerializer):
         ]
 
 class OfferPublicSerializer(serializers.ModelSerializer):
+    """
+    Serializes offers for public listing, including only valid offer details.
+    """
     details = OfferDetailPublicSerializer(many=True, read_only=True)
 
     class Meta:
