@@ -7,6 +7,8 @@ class OrderSerializer(serializers.ModelSerializer):
     """
     Serializes all fields of an Order for listing and detail endpoints.
     """
+    price = serializers.FloatField()  # Preis als Zahl ausgeben
+
     class Meta:
         model = Order
         fields = [
