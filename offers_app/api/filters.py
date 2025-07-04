@@ -4,9 +4,9 @@ from offers_app.models import Offer
 class OfferFilter(filters.FilterSet):
     """
     FilterSet for filtering Offer objects by creator,
-    min_price, and max_delivery_time.
+    min_price_annotated, and max_delivery_time.
     """
-    min_price = filters.NumberFilter(field_name="min_price", lookup_expr="gte")
+    min_price = filters.NumberFilter(field_name="min_price_annotated", lookup_expr="gte")
     max_delivery_time = filters.NumberFilter(
         field_name="min_delivery_time", lookup_expr="lte"
     )

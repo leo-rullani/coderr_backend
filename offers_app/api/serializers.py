@@ -109,12 +109,13 @@ class OfferDetailSerializer(serializers.ModelSerializer):
     title = StrictCharField()
     details = OfferDetailWriteSerializer(many=True)
     user_details = UserDetailsSerializer(source='user', read_only=True)
+    min_price_annotated = serializers.FloatField(source='min_price', read_only=True)
 
     class Meta:
         model = Offer
         fields = [
             'id', 'user', 'title', 'image', 'description', 'created_at',
-            'updated_at', 'details', 'min_price', 'min_delivery_time', 'user_details',
+            'updated_at', 'details', 'min_price_annotated', 'min_delivery_time', 'user_details',
         ]
 
     def update(self, instance, validated_data):
@@ -148,17 +149,17 @@ class OfferListSerializer(serializers.ModelSerializer):
     """
     details = serializers.SerializerMethodField()
     user_details = UserDetailsSerializer(source='user', read_only=True)
+    min_price_annotated = serializers.FloatField(read_only=True)
 
     class Meta:
         model = Offer
         fields = [
             'id', 'user', 'title', 'image', 'description', 'created_at',
-            'updated_at', 'details', 'min_price', 'min_delivery_time', 'user_details',
+            'updated_at', 'details', 'min_price_annotated', 'min_delivery_time', 'user_details',
         ]
 
     def get_details(self, obj):
         valid_details = obj.details.filter(id__isnull=False)
-        print(f"Offer {obj.id}: Details {[d.id for d in valid_details]}")
         return OfferDetailShortSerializer(valid_details, many=True).data
 
 
