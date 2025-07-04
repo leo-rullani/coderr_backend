@@ -1,4 +1,7 @@
 from rest_framework.permissions import BasePermission
+import logging
+
+logger = logging.getLogger(__name__)
 
 class IsCustomerUser(BasePermission):
     """
@@ -40,8 +43,14 @@ class IsOrderBusinessUser(BasePermission):
         Returns:
             bool: True if user matches the order's business_user and role is 'business'.
         """
-        return (
-            request.user.is_authenticated
-            and getattr(request.user, "role", None) == "business"
-            and obj.business_user == request.user
-        )
+        is_authenticated = request.user.is_authenticated
+        is_business = getattr(request.user, "role", None) == "business"
+        is_owner = (obj.business_user.id == request.user.id)
+
+        # Optional: Aktivieren, um Debug-Ausgaben zu sehen
+        # logger.debug(f"User authenticated: {is_authenticated}")
+        # logger.debug(f"User role is business: {is_business}")
+        # logger.debug(f"User is business_user of order: {is_owner}")
+        # logger.debug(f"Request user ID: {request.user.id}, Order business_user ID: {obj.business_user.id}")
+
+        return is_authenticated and is_business and is_owner
