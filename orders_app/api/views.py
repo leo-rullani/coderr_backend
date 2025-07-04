@@ -12,7 +12,6 @@ from orders_app.api.permissions import IsCustomerUser, IsOrderBusinessUser
 from django.contrib.auth import get_user_model
 from rest_framework.pagination import PageNumberPagination
 
-
 class StandardResultsSetPagination(PageNumberPagination):
     """
     Standard pagination class with page size 10, can be overridden by query param 'page_size'.
@@ -21,16 +20,17 @@ class StandardResultsSetPagination(PageNumberPagination):
     page_size_query_param = 'page_size'
     max_page_size = 100
 
-
 class OrderListCreateAPIView(generics.ListCreateAPIView):
     """
     API view for listing and creating orders.
 
-    GET: Returns a paginated list of orders where the current user is either the customer or the business partner.
-    POST: Allows only authenticated users with role 'customer' to create a new order from an OfferDetail.
+    GET: Returns a paginated list of orders where the current user is either
+         the customer or the business partner.
+    POST: Allows only authenticated users with role 'customer' to create a new
+          order from an OfferDetail.
     """
     permission_classes = [permissions.IsAuthenticated]
-    pagination_class = StandardResultsSetPagination  # <-- Hier Pagination aktivieren
+    pagination_class = StandardResultsSetPagination  # Pagination enabled here
 
     def get_queryset(self):
         """
@@ -52,6 +52,7 @@ class OrderListCreateAPIView(generics.ListCreateAPIView):
     def get_permissions(self):
         """
         Returns the permission classes for the current request.
+        POST requires authenticated customer, GET requires authentication only.
         """
         if self.request.method == "POST":
             return [permissions.IsAuthenticated(), IsCustomerUser()]
@@ -67,22 +68,22 @@ class OrderListCreateAPIView(generics.ListCreateAPIView):
         output_serializer = OrderSerializer(order)
         return Response(output_serializer.data, status=status.HTTP_201_CREATED)
 
-
 class OrderDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
     """
     API view for retrieving, updating, or deleting a single order.
 
     GET: Retrieves an order by id if the user is involved.
-    PATCH: Only the business user (role 'business') can update status (and ONLY status!).
-    DELETE: Deletes the order (only for admin/staff!).
+    PATCH: Only the business user (role 'business') can update status (and ONLY status).
+    DELETE: Deletes the order (only for admin/staff).
     """
     permission_classes = [permissions.IsAuthenticated]
 
     def get_permissions(self):
         """
-        PATCH: Only business_user ('business') can update status.
-        DELETE: Only staff/admin can delete.
-        Other: Any involved user (customer or business).
+        Define permission classes depending on HTTP method:
+        - PATCH: business user only
+        - DELETE: admin/staff only
+        - GET: authenticated users involved in order
         """
         if self.request.method == "PATCH":
             return [permissions.IsAuthenticated(), IsOrderBusinessUser()]
@@ -92,8 +93,7 @@ class OrderDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_serializer_class(self):
         """
-        PATCH: Use OrderStatusUpdateSerializer (only status allowed).
-        Other: Use OrderSerializer.
+        Use OrderStatusUpdateSerializer for PATCH, OrderSerializer otherwise.
         """
         if self.request.method == "PATCH":
             return OrderStatusUpdateSerializer
@@ -101,15 +101,17 @@ class OrderDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_queryset(self):
         """
-        Gibt ALLE Orders zurück (damit auch andere Business-User 403 kriegen, nicht 404!)
+        Returns all orders so that unauthorized users receive 403 (forbidden)
+        instead of 404 (not found).
         """
         return Order.objects.all()
 
     def check_object_permissions(self, request, obj):
         """
-        Für GET/DELETE: Nur customer oder business_user dürfen überhaupt lesen/löschen.
-        Für PATCH: Permission wird in IsOrderBusinessUser gemacht (nur business_user darf patchen).
-        Für DELETE: Nur Admin (IsAdminUser) und Order-Beteiligte sehen 403, Rest 404.
+        Enforces:
+        - GET/DELETE: Only customer or business_user involved in the order can access.
+        - PATCH: Permission checked by IsOrderBusinessUser.
+        - DELETE: Admin/staff allowed.
         """
         if request.method in ("GET", "DELETE"):
             if request.method == "DELETE" and request.user.is_staff:
@@ -120,8 +122,8 @@ class OrderDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
 
     def partial_update(self, request, *args, **kwargs):
         """
-        PATCH: Updates only the 'status' field if the user is the business user.
-        Only 'status' allowed, any other field = 400 error!
+        PATCH: Only 'status' field can be updated by business user.
+        If other fields included, returns 400 Bad Request.
         """
         if set(request.data.keys()) != {"status"}:
             return Response(
@@ -136,62 +138,32 @@ class OrderDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
         output_serializer = OrderSerializer(instance)
         return Response(output_serializer.data, status=status.HTTP_200_OK)
 
-
 class OrderCountAPIView(APIView):
     """
-    GET: Gibt die Anzahl der laufenden Bestellungen ('in_progress') eines bestimmten Geschäftsnutzers zurück.
+    Returns the count of 'in_progress' orders for a specific business user.
     """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, business_user_id):
-        """
-        Returns the order count for a business user with status 'in_progress'.
-
-        Args:
-            business_user_id (int): Die ID des Geschäftsnutzers
-
-        Returns:
-            200: {"order_count": <int>}
-            401: Not authenticated
-            404: Business user not found
-        """
         User = get_user_model()
         try:
             business_user = User.objects.get(id=business_user_id, role="business")
         except User.DoesNotExist:
-            return Response(
-                {"detail": "Business user not found."},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return Response({"detail": "Business user not found."}, status=status.HTTP_404_NOT_FOUND)
         count = Order.objects.filter(business_user=business_user, status="in_progress").count()
         return Response({"order_count": count}, status=status.HTTP_200_OK)
 
-
 class CompletedOrderCountAPIView(APIView):
     """
-    GET: Gibt die Anzahl der abgeschlossenen Bestellungen ('completed') eines bestimmten Geschäftsnutzers zurück.
+    Returns the count of 'completed' orders for a specific business user.
     """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, business_user_id):
-        """
-        Returns the count of completed orders for a business user.
-
-        Args:
-            business_user_id (int): Die ID des Geschäftsnutzers
-
-        Returns:
-            200: {"completed_order_count": <int>}
-            401: Not authenticated
-            404: Business user not found
-        """
         User = get_user_model()
         try:
             business_user = User.objects.get(id=business_user_id, role="business")
         except User.DoesNotExist:
-            return Response(
-                {"detail": "Business user not found."},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return Response({"detail": "Business user not found."}, status=status.HTTP_404_NOT_FOUND)
         count = Order.objects.filter(business_user=business_user, status="completed").count()
         return Response({"completed_order_count": count}, status=status.HTTP_200_OK)

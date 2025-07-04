@@ -51,7 +51,7 @@ class OrderCreateSerializer(serializers.Serializer):
             NotFound: If the OfferDetail does not exist (404).
         """
         try:
-            offer_detail = OfferDetail.objects.get(id=value)
+            OfferDetail.objects.get(id=value)
         except OfferDetail.DoesNotExist:
             raise NotFound("OfferDetail not found.")  # Gibt 404 zurück!
         return value
