@@ -11,9 +11,11 @@ from rest_framework.exceptions import PermissionDenied
 
 class UserProfileDetailView(generics.RetrieveUpdateAPIView):
     """
-    Allows authenticated users to retrieve or update their own profile,
-    using the user's ID in the URL.
-    Only the profile owner is authorized.
+    API endpoint to retrieve or update the profile of a specific user by user ID.
+    Only the owner of the profile is allowed to update it.
+
+    - GET: Returns profile data for the user with the given ID.
+    - PATCH/PUT: Allows the profile owner to update their profile data.
     """
     queryset = UserProfile.objects.all()
     serializer_class = UserProfileSerializer
@@ -21,23 +23,34 @@ class UserProfileDetailView(generics.RetrieveUpdateAPIView):
 
     def get_object(self):
         """
-        Returns the UserProfile where the related user's ID matches the URL pk.
+        Fetches the UserProfile object for the user ID provided in the URL.
+
+        Returns:
+            UserProfile instance matching the user ID in the URL path.
+
+        Raises:
+            Http404 if UserProfile does not exist for the given user ID.
         """
         user_id = self.kwargs["pk"]
         return get_object_or_404(UserProfile, user__id=user_id)
 
     def perform_update(self, serializer):
         """
-        Ensure only the profile owner can update the profile.
+        Restricts update operation to the profile owner only.
+
+        Raises:
+            PermissionDenied if the authenticated user is not the owner.
         """
         if serializer.instance.user != self.request.user:
             raise PermissionDenied("You do not have permission to update this profile.")
         serializer.save()
 
+
 class BusinessProfileListView(generics.ListAPIView):
     """
-    Returns a list of all business user profiles.
+    API endpoint that returns a list of all business user profiles.
     Accessible only to authenticated users.
+    Pagination is disabled.
     """
     serializer_class = BusinessProfileListSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -45,14 +58,19 @@ class BusinessProfileListView(generics.ListAPIView):
 
     def get_queryset(self):
         """
-        Filters all UserProfiles whose linked user has role 'business'.
+        Filters and returns UserProfile objects linked to users with role 'business'.
+
+        Returns:
+            QuerySet of UserProfiles with user role 'business'.
         """
         return UserProfile.objects.filter(user__role="business")
 
+
 class CustomerProfileListView(generics.ListAPIView):
     """
-    Returns a list of all customer user profiles.
+    API endpoint that returns a list of all customer user profiles.
     Accessible only to authenticated users.
+    Pagination is disabled.
     """
     serializer_class = CustomerProfileListSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -60,6 +78,9 @@ class CustomerProfileListView(generics.ListAPIView):
 
     def get_queryset(self):
         """
-        Filters all UserProfiles whose linked user has role 'customer'.
+        Filters and returns UserProfile objects linked to users with role 'customer'.
+
+        Returns:
+            QuerySet of UserProfiles with user role 'customer'.
         """
         return UserProfile.objects.filter(user__role="customer")

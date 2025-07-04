@@ -3,6 +3,10 @@ from users_app.models import UserProfile
 from auth_app.models import CustomUser
 
 class UserProfileSerializer(serializers.ModelSerializer):
+    """
+    Serializer für das UserProfile mit Einbindung von Feldern aus dem zugehörigen User (CustomUser).
+    E-Mail ist editierbar, Username und Role (type) sind readonly.
+    """
     username = serializers.CharField(source='user.username', read_only=True)
     email = serializers.EmailField(source='user.email', read_only=False)
     type = serializers.CharField(source='user.role', read_only=True)
@@ -27,7 +31,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         """
-        Ensures that empty fields are returned as empty strings instead of null.
+        Sorgt dafür, dass in der API leere Felder als leerer String statt None zurückgegeben werden.
         """
         rep = super().to_representation(instance)
         for field in ["first_name", "last_name", "location", "tel", "description", "working_hours"]:
@@ -37,7 +41,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         """
-        Update user profile and email field from related CustomUser model.
+        Aktualisiert das UserProfile und synchronisiert bei Bedarf die Email im verknüpften User-Objekt.
         """
         user_data = validated_data.pop("user", {})
         email = user_data.get("email")
@@ -46,7 +50,11 @@ class UserProfileSerializer(serializers.ModelSerializer):
             instance.user.save()
         return super().update(instance, validated_data)
 
+
 class BusinessProfileListSerializer(serializers.ModelSerializer):
+    """
+    Serializer für die Business Profile Liste, mit Usernamen und Rolle readonly.
+    """
     username = serializers.CharField(source='user.username', read_only=True)
     type = serializers.CharField(source='user.role', read_only=True)
 
@@ -67,7 +75,7 @@ class BusinessProfileListSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         """
-        Ensures that empty fields are returned as empty strings instead of null.
+        Leere Felder als leerer String ausgeben statt None.
         """
         rep = super().to_representation(instance)
         for field in ["first_name", "last_name", "location", "tel", "description", "working_hours"]:
@@ -75,7 +83,11 @@ class BusinessProfileListSerializer(serializers.ModelSerializer):
                 rep[field] = ""
         return rep
 
+
 class CustomerProfileListSerializer(serializers.ModelSerializer):
+    """
+    Serializer für die Customer Profile Liste, mit Usernamen und Rolle readonly.
+    """
     username = serializers.CharField(source='user.username', read_only=True)
     type = serializers.CharField(source='user.role', read_only=True)
 
@@ -93,7 +105,7 @@ class CustomerProfileListSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         """
-        Ensures that empty fields are returned as empty strings instead of null.
+        Leere Felder als leerer String ausgeben statt None.
         """
         rep = super().to_representation(instance)
         for field in ["first_name", "last_name"]:
