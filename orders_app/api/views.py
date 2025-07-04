@@ -10,6 +10,17 @@ from orders_app.api.serializers import (
 )
 from orders_app.api.permissions import IsCustomerUser, IsOrderBusinessUser
 from django.contrib.auth import get_user_model
+from rest_framework.pagination import PageNumberPagination
+
+
+class StandardResultsSetPagination(PageNumberPagination):
+    """
+    Standard pagination class with page size 10, can be overridden by query param 'page_size'.
+    """
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
 
 class OrderListCreateAPIView(generics.ListCreateAPIView):
     """
@@ -19,6 +30,7 @@ class OrderListCreateAPIView(generics.ListCreateAPIView):
     POST: Allows only authenticated users with role 'customer' to create a new order from an OfferDetail.
     """
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = StandardResultsSetPagination  # <-- Hier Pagination aktivieren
 
     def get_queryset(self):
         """
@@ -54,6 +66,7 @@ class OrderListCreateAPIView(generics.ListCreateAPIView):
         order = serializer.save()
         output_serializer = OrderSerializer(order)
         return Response(output_serializer.data, status=status.HTTP_201_CREATED)
+
 
 class OrderDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
     """
@@ -123,6 +136,7 @@ class OrderDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
         output_serializer = OrderSerializer(instance)
         return Response(output_serializer.data, status=status.HTTP_200_OK)
 
+
 class OrderCountAPIView(APIView):
     """
     GET: Gibt die Anzahl der laufenden Bestellungen ('in_progress') eines bestimmten Geschäftsnutzers zurück.
@@ -151,6 +165,7 @@ class OrderCountAPIView(APIView):
             )
         count = Order.objects.filter(business_user=business_user, status="in_progress").count()
         return Response({"order_count": count}, status=status.HTTP_200_OK)
+
 
 class CompletedOrderCountAPIView(APIView):
     """
