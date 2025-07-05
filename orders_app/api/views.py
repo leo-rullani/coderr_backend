@@ -30,7 +30,7 @@ class OrderListCreateAPIView(generics.ListCreateAPIView):
           order from an OfferDetail.
     """
     permission_classes = [permissions.IsAuthenticated]
-    pagination_class = StandardResultsSetPagination  # Pagination enabled here
+    pagination_class = None  # Pagination deaktivieren
 
     def get_queryset(self):
         """
@@ -42,9 +42,6 @@ class OrderListCreateAPIView(generics.ListCreateAPIView):
         ).order_by('-created_at')
 
     def get_serializer_class(self):
-        """
-        Returns the appropriate serializer class depending on the request method.
-        """
         if self.request.method == "POST":
             return OrderCreateSerializer
         return OrderSerializer
