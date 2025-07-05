@@ -7,7 +7,7 @@ class OrderSerializer(serializers.ModelSerializer):
     """
     Serializes all fields of an Order for listing and detail endpoints.
     """
-    price = serializers.FloatField()  # Preis als Zahl ausgeben
+    price = serializers.FloatField()  
 
     class Meta:
         model = Order
@@ -25,6 +25,20 @@ class OrderSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # price als int ausgeben, wenn keine Nachkommastellen vorhanden sind
+        if data.get("price") is not None:
+            try:
+                float_price = float(data["price"])
+                if float_price.is_integer():
+                    data["price"] = int(float_price)
+                else:
+                    data["price"] = float_price
+            except Exception:
+                pass
+        return data
 
 class OrderCreateSerializer(serializers.Serializer):
     """
