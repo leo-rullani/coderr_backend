@@ -182,6 +182,16 @@ class OfferDetailSerializer(serializers.ModelSerializer):
         instance.save(update_fields=["min_price", "min_delivery_time"])
 
         return instance
+    
+    def to_representation(self, instance):
+        """
+        Return write‑friendly data on input, but full detail incl. ID on output.
+        """
+        rep = super().to_representation(instance)
+        rep["details"] = OfferDetailFullSerializer(
+            instance.details.all(), many=True
+            ).data
+        return rep
 
 class OfferListSerializer(serializers.ModelSerializer):
     """Offer list endpoint including min price & delivery aggregates."""
