@@ -35,9 +35,10 @@ class OfferDetailShortSerializer(serializers.ModelSerializer):
 
 class OfferDetailFullSerializer(serializers.ModelSerializer):
     """
-    Serializes all required fields for offer details (used in offer detail endpoint and creation).
+    Serializes all fields for offer details (POST/Detail).
+    Gibt price als int zurück, wenn keine Nachkommastellen.
     """
-    price = serializers.FloatField()
+    price = serializers.SerializerMethodField()
 
     class Meta:
         model = OfferDetail
@@ -45,6 +46,12 @@ class OfferDetailFullSerializer(serializers.ModelSerializer):
             'id', 'title', 'revisions', 'delivery_time_in_days', 'price',
             'features', 'offer_type',
         ]
+
+    def get_price(self, obj):
+        value = obj.price
+        if value is None:
+            return None
+        return int(value) if value % 1 == 0 else float(value)
 
     def get_url(self, obj):
         request = self.context.get('request')
@@ -80,15 +87,17 @@ class StrictCharField(serializers.CharField):
 
 class OfferCreateSerializer(serializers.ModelSerializer):
     """
-    Serializer for creating offers with nested offer details.
-    Enforces at least 3 details per offer (POST only).
+    Write‑serializer for new Offers + Details.
+    Answer receveis ID after POST
+    with full OfferDetail‑Objekte inkl. ID.
     """
-    details = OfferDetailWriteSerializer(many=True)
+    details = OfferDetailWriteSerializer(many=True, write_only=True)
 
     class Meta:
         model = Offer
         fields = ['id', 'title', 'image', 'description', 'details']
 
+    # ≥ 3 Details erforderlich
     def validate_details(self, value):
         if len(value) < 3:
             raise serializers.ValidationError("At least 3 offer details are required.")
@@ -96,11 +105,18 @@ class OfferCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         details_data = validated_data.pop('details')
-        user = self.context['request'].user
-        offer = Offer.objects.create(user=user, **validated_data)
-        for detail_data in details_data:
-            OfferDetail.objects.create(offer=offer, **clean_detail_data(detail_data))
+        offer = Offer.objects.create(user=self.context['request'].user, **validated_data)
+        for d in details_data:
+            OfferDetail.objects.create(offer=offer, **clean_detail_data(d))
         return offer
+
+    def to_representation(self, instance):
+        """
+        use OfferDetailFullSerializer, each detail answer receives ID
+        """
+        rep = super().to_representation(instance)
+        rep['details'] = OfferDetailFullSerializer(instance.details.all(), many=True).data
+        return rep
 
 class OfferDetailSerializer(serializers.ModelSerializer):
     """

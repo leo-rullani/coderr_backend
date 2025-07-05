@@ -41,6 +41,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         ]:
             if rep[field] is None:
                 rep[field] = ""
+        # Ensure file is treated as empty string if it's None
         if rep.get("file") is None:
             rep["file"] = ""
         return rep
@@ -95,6 +96,7 @@ class BusinessProfileListSerializer(serializers.ModelSerializer):
         ]:
             if rep[field] is None:
                 rep[field] = ""
+        # Convert file null to empty string
         if rep.get("file") is None:
             rep["file"] = ""
         return rep
@@ -127,6 +129,7 @@ class CustomerProfileListSerializer(serializers.ModelSerializer):
         for field in ["first_name", "last_name"]:
             if rep[field] is None:
                 rep[field] = ""
+        # Convert file null to empty string
         if rep.get("file") is None:
             rep["file"] = ""
         return rep

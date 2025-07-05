@@ -23,7 +23,8 @@ INSTALLED_APPS = [
     'stats_app',
     'core_utils',
     'django_filters',
-    'corsheaders',  # <--- NEU
+    'corsheaders',
+     'django_extensions',
 ]
 
 MIDDLEWARE = [

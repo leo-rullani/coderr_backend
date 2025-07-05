@@ -1,102 +1,83 @@
+from django.db import transaction
+from django.http import Http404
+from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions
+
+from auth_app.models import CustomUser
 from users_app.models import UserProfile
+from users_app.permissions import IsProfileOwner
+
 from .serializers import (
     UserProfileSerializer,
     BusinessProfileListSerializer,
     CustomerProfileListSerializer,
 )
-from .permissions import IsOwnerProfile
-from django.shortcuts import get_object_or_404
-from rest_framework.exceptions import PermissionDenied
 
-class UserProfileDetailView(generics.RetrieveUpdateAPIView):
-    """
-    API endpoint to retrieve or update the profile of a specific user by user ID.
-    Only the owner of the profile is allowed to update it.
 
-    - GET: Returns profile data for the user with the given ID.
-    - PATCH/PUT: Allows the profile owner to update their profile data.
+class BusinessProfileRefUpdateView(generics.RetrieveUpdateAPIView):
     """
-    queryset = UserProfile.objects.all()
+    Retrieve **or update** a Business profile by user ID / 'ref<ID>' / username.
+    Creates an empty UserProfile automatically if none exists.
+    """
+
     serializer_class = UserProfileSerializer
-    permission_classes = [permissions.IsAuthenticated, IsOwnerProfile]
+    permission_classes = [permissions.IsAuthenticated, IsProfileOwner]
 
+    @transaction.atomic
     def get_object(self):
-        """
-        Fetches the UserProfile object for the user ID provided in the URL.
+        """Resolve 'ref', ensure role='business', create profile if needed."""
+        ref = self.kwargs["ref"]
+        if ref.lower().startswith("ref") and ref[3:].isdigit():
+            ref = ref[3:]
 
-        Returns:
-            UserProfile instance matching the user ID in the URL path.
+        if ref.isdigit():
+            user = get_object_or_404(CustomUser, id=ref, role="business")
+        else:
+            user = get_object_or_404(CustomUser, username=ref, role="business")
 
-        Raises:
-            Http404 if UserProfile does not exist for the given user ID.
-        """
-        user_id = self.kwargs["pk"]
-        return get_object_or_404(UserProfile, user__id=user_id)
+        profile, _ = UserProfile.objects.get_or_create(user=user)
+        self.check_object_permissions(self.request, profile)
+        return profile
 
-    def perform_update(self, serializer):
-        """
-        Restricts update operation to the profile owner only.
-
-        Raises:
-            PermissionDenied if the authenticated user is not the owner.
-        """
-        if serializer.instance.user != self.request.user:
-            raise PermissionDenied("You do not have permission to update this profile.")
-        serializer.save()
 
 class BusinessProfileDetailView(generics.RetrieveAPIView):
-    """
-    API endpoint to retrieve the first business user profile.
-    Accessible only to authenticated users.
-    """
     serializer_class = UserProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_object(self):
-        """
-        Returns the first UserProfile with role 'business'.
-        Raises 404 if none found.
-        """
-        queryset = UserProfile.objects.filter(user__role="business")
-        if not queryset.exists():
+        qs = UserProfile.objects.filter(user__role="business")
+        if not qs.exists():
             raise Http404("No business profile found")
-        return queryset.first()
+        return qs.first()
+
 
 class BusinessProfileListView(generics.ListAPIView):
-    """
-    API endpoint that returns a list of all business user profiles.
-    Accessible only to authenticated users.
-    Pagination is disabled.
-    """
     serializer_class = BusinessProfileListSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = None
 
     def get_queryset(self):
-        """
-        Filters and returns UserProfile objects linked to users with role 'business'.
-
-        Returns:
-            QuerySet of UserProfiles with user role 'business'.
-        """
         return UserProfile.objects.filter(user__role="business")
 
+
 class CustomerProfileListView(generics.ListAPIView):
-    """
-    API endpoint that returns a list of all customer user profiles.
-    Accessible only to authenticated users.
-    Pagination is disabled.
-    """
     serializer_class = CustomerProfileListSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = None
 
     def get_queryset(self):
-        """
-        Filters and returns UserProfile objects linked to users with role 'customer'.
-
-        Returns:
-            QuerySet of UserProfiles with user role 'customer'.
-        """
         return UserProfile.objects.filter(user__role="customer")
+
+
+class UserProfileUniversalDetailView(generics.RetrieveUpdateAPIView):
+    serializer_class = UserProfileSerializer
+    permission_classes = [permissions.IsAuthenticated, IsProfileOwner]
+
+    def get_object(self):
+        ref = self.kwargs["ref"]
+        if ref.isdigit():
+            profile = get_object_or_404(UserProfile, user__id=ref)
+        else:
+            profile = get_object_or_404(UserProfile, user__username=ref)
+        self.check_object_permissions(self.request, profile)
+        return profile
