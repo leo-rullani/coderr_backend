@@ -4,19 +4,11 @@ from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
-
-# --------------------------------------------------------------------------- #
-# helpers
-# --------------------------------------------------------------------------- #
 def clean_detail_data(detail):
     """Remove non‑model keys before creating an OfferDetail."""
     forbidden_keys = ["user", "url"]
     return {k: v for k, v in detail.items() if k not in forbidden_keys}
 
-
-# --------------------------------------------------------------------------- #
-# small reusable serializers
-# --------------------------------------------------------------------------- #
 class UserDetailsSerializer(serializers.ModelSerializer):
     """Basic user info for offer listing."""
     class Meta:
@@ -34,7 +26,6 @@ class OfferDetailShortSerializer(serializers.ModelSerializer):
 
     def get_url(self, obj):
         return f"/offerdetails/{obj.id}/"
-
 
 class OfferDetailFullSerializer(serializers.ModelSerializer):
     """
@@ -91,10 +82,6 @@ class StrictCharField(serializers.CharField):
             raise serializers.ValidationError("Must be a string.")
         return super().to_internal_value(data)
 
-
-# --------------------------------------------------------------------------- #
-# create / update serializers
-# --------------------------------------------------------------------------- #
 class OfferCreateSerializer(serializers.ModelSerializer):
     """
     Create serializer for an Offer with ≥ 3 details.
@@ -124,22 +111,19 @@ class OfferCreateSerializer(serializers.ModelSerializer):
             prices.append(od.price)
             delivery_times.append(od.delivery_time_in_days)
 
-        # --- aggregate update ------------------------------------------------
         offer.min_price = min(prices) if prices else None
         offer.min_delivery_time = min(delivery_times) if delivery_times else None
         offer.save(update_fields=["min_price", "min_delivery_time"])
-        # --------------------------------------------------------------------
 
         return offer
 
-    # representation incl. IDs
+
     def to_representation(self, instance):
         rep = super().to_representation(instance)
         rep["details"] = OfferDetailFullSerializer(
             instance.details.all(), many=True
         ).data
         return rep
-
 
 class OfferDetailSerializer(serializers.ModelSerializer):
     """
@@ -191,13 +175,11 @@ class OfferDetailSerializer(serializers.ModelSerializer):
                         offer=instance, **clean_detail_data(detail)
                     )
 
-        # --- aggregate update ------------------------------------------------
         values = instance.details.values_list("price", "delivery_time_in_days")
         prices, times = zip(*values) if values else ([], [])
         instance.min_price = min(prices) if prices else None
         instance.min_delivery_time = min(times) if times else None
         instance.save(update_fields=["min_price", "min_delivery_time"])
-        # --------------------------------------------------------------------
 
         return instance
 

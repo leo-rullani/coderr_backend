@@ -30,10 +30,21 @@ class OfferListCreateAPIView(generics.ListCreateAPIView):
         Offer.objects.all()
         .annotate(min_price_annotated=Min("details__price"))
         .select_related("user")
+        .distinct()  # avoid duplicates when joining for search
     )
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+
+    # Search now covers main fields *and* nested detail/user fields
+    search_fields = [
+        "title",
+        "description",
+        "details__title",
+        "details__features",
+        "details__offer_type",
+        "user__username",
+    ]
+
     filterset_class = OfferFilter
-    search_fields = ["title", "description"]
     ordering_fields = ["updated_at", "min_price_annotated"]
     ordering = ["-updated_at"]
 
@@ -78,9 +89,7 @@ class OfferDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
 
 
 class OfferDetailDetailAPIView(generics.RetrieveAPIView):
-    """
-    Retrieve a single *OfferDetail* (nested line of an offer).
-    """
+    """Retrieve a single *OfferDetail* (nested line of an offer)."""
 
     queryset = OfferDetail.objects.all()
     serializer_class = OfferDetailFullSerializer
