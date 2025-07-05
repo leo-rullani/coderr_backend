@@ -4,8 +4,8 @@ from auth_app.models import CustomUser
 
 class UserProfileSerializer(serializers.ModelSerializer):
     """
-    Serializer für das UserProfile mit Einbindung von Feldern aus dem zugehörigen User (CustomUser).
-    E-Mail ist editierbar, Username und Role (type) sind readonly.
+    Serializer for UserProfile including related User fields.
+    Email is editable, username and role (type) are read-only.
     """
     username = serializers.CharField(source='user.username', read_only=True)
     email = serializers.EmailField(source='user.email', read_only=False)
@@ -30,18 +30,24 @@ class UserProfileSerializer(serializers.ModelSerializer):
         read_only_fields = ["user", "username", "email", "type", "created_at"]
 
     def to_representation(self, instance):
-        """
-        Sorgt dafür, dass in der API leere Felder als leerer String statt None zurückgegeben werden.
-        """
         rep = super().to_representation(instance)
-        for field in ["first_name", "last_name", "location", "tel", "description", "working_hours"]:
+        for field in [
+            "first_name",
+            "last_name",
+            "location",
+            "tel",
+            "description",
+            "working_hours",
+        ]:
             if rep[field] is None:
                 rep[field] = ""
+        if rep.get("file") is None:
+            rep["file"] = ""
         return rep
 
     def update(self, instance, validated_data):
         """
-        Aktualisiert das UserProfile und synchronisiert bei Bedarf die Email im verknüpften User-Objekt.
+        Updates UserProfile and synchronizes email in related User object if needed.
         """
         user_data = validated_data.pop("user", {})
         email = user_data.get("email")
@@ -53,10 +59,10 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
 class BusinessProfileListSerializer(serializers.ModelSerializer):
     """
-    Serializer für die Business Profile Liste, mit Usernamen und Rolle readonly.
+    Serializer for business profile list with username and role readonly.
     """
-    username = serializers.CharField(source='user.username', read_only=True)
-    type = serializers.CharField(source='user.role', read_only=True)
+    username = serializers.CharField(source="user.username", read_only=True)
+    type = serializers.CharField(source="user.role", read_only=True)
 
     class Meta:
         model = UserProfile
@@ -70,26 +76,36 @@ class BusinessProfileListSerializer(serializers.ModelSerializer):
             "tel",
             "description",
             "working_hours",
-            "type"
+            "type",
         ]
 
     def to_representation(self, instance):
         """
-        Leere Felder als leerer String ausgeben statt None.
+        Return empty fields as empty string instead of None.
+        Convert null file to empty string.
         """
         rep = super().to_representation(instance)
-        for field in ["first_name", "last_name", "location", "tel", "description", "working_hours"]:
+        for field in [
+            "first_name",
+            "last_name",
+            "location",
+            "tel",
+            "description",
+            "working_hours",
+        ]:
             if rep[field] is None:
                 rep[field] = ""
+        if rep.get("file") is None:
+            rep["file"] = ""
         return rep
 
 
 class CustomerProfileListSerializer(serializers.ModelSerializer):
     """
-    Serializer für die Customer Profile Liste, mit Usernamen und Rolle readonly.
+    Serializer for customer profile list with username and role readonly.
     """
-    username = serializers.CharField(source='user.username', read_only=True)
-    type = serializers.CharField(source='user.role', read_only=True)
+    username = serializers.CharField(source="user.username", read_only=True)
+    type = serializers.CharField(source="user.role", read_only=True)
 
     class Meta:
         model = UserProfile
@@ -100,15 +116,17 @@ class CustomerProfileListSerializer(serializers.ModelSerializer):
             "last_name",
             "file",
             "uploaded_at",
-            "type"
+            "type",
         ]
 
     def to_representation(self, instance):
         """
-        Leere Felder als leerer String ausgeben statt None.
+        Return empty fields as empty string instead of None.
         """
         rep = super().to_representation(instance)
         for field in ["first_name", "last_name"]:
             if rep[field] is None:
                 rep[field] = ""
+        if rep.get("file") is None:
+            rep["file"] = ""
         return rep

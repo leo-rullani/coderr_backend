@@ -45,6 +45,23 @@ class UserProfileDetailView(generics.RetrieveUpdateAPIView):
             raise PermissionDenied("You do not have permission to update this profile.")
         serializer.save()
 
+class BusinessProfileDetailView(generics.RetrieveAPIView):
+    """
+    API endpoint to retrieve the first business user profile.
+    Accessible only to authenticated users.
+    """
+    serializer_class = UserProfileSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        """
+        Returns the first UserProfile with role 'business'.
+        Raises 404 if none found.
+        """
+        queryset = UserProfile.objects.filter(user__role="business")
+        if not queryset.exists():
+            raise Http404("No business profile found")
+        return queryset.first()
 
 class BusinessProfileListView(generics.ListAPIView):
     """
@@ -64,7 +81,6 @@ class BusinessProfileListView(generics.ListAPIView):
             QuerySet of UserProfiles with user role 'business'.
         """
         return UserProfile.objects.filter(user__role="business")
-
 
 class CustomerProfileListView(generics.ListAPIView):
     """

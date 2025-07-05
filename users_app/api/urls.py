@@ -3,9 +3,11 @@ from .views import (
     UserProfileDetailView,
     BusinessProfileListView,
     CustomerProfileListView,
+    BusinessProfileDetailView,  
 )
 
 urlpatterns = [
+    path("profile/business/", BusinessProfileDetailView.as_view(), name="business-profile-detail"),
     path("profile/<int:pk>/", UserProfileDetailView.as_view(), name="user-profile-detail"),
     path("profiles/business/", BusinessProfileListView.as_view(), name="business-profiles"),
     path("profiles/customer/", CustomerProfileListView.as_view(), name="customer-profiles"),
