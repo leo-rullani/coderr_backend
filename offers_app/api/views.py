@@ -78,7 +78,7 @@ class OfferListCreateAPIView(generics.ListCreateAPIView):
         """
         if self.request.method == "POST":
             return OfferCreateSerializer
-        return OfferListSerializer
+        return OfferPublicSerializer
 
     def perform_create(self, serializer):
         """
@@ -86,6 +86,9 @@ class OfferListCreateAPIView(generics.ListCreateAPIView):
 
         Args:
             serializer: The serializer instance with validated data.
+
+        Returns:
+            None
         """
         serializer.save()
 
@@ -94,12 +97,9 @@ class OfferDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
     """
     API endpoint for retrieving, updating, or deleting a single offer by id.
 
-    Permissions:
-        - PATCH/PUT/DELETE: Only the offer owner.
-        - GET: Any authenticated user.
-
-    Responses:
-        - DELETE returns HTTP 204 No Content on success.
+    PATCH/PUT/DELETE: Only the offer owner.
+    GET: Any authenticated user.
+    DELETE returns HTTP 204 No Content on success.
     """
 
     queryset = Offer.objects.all().select_related('user')

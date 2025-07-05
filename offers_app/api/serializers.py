@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from offers_app.models import Offer, OfferDetail
 from django.contrib.auth import get_user_model
+from decimal import Decimal
 
 User = get_user_model()
 
@@ -31,7 +32,7 @@ class OfferDetailShortSerializer(serializers.ModelSerializer):
 
     def get_url(self, obj):
         return f"/offerdetails/{obj.id}/"
-    
+
 class OfferDetailFullSerializer(serializers.ModelSerializer):
     """
     Serializes all required fields for offer details (used in offer detail endpoint and creation).
@@ -162,12 +163,8 @@ class OfferListSerializer(serializers.ModelSerializer):
         valid_details = obj.details.filter(id__isnull=False)
         return OfferDetailShortSerializer(valid_details, many=True).data
 
-
 class OfferDetailPublicSerializer(serializers.ModelSerializer):
-    """
-    Serializes all fields for offer details for public view.
-    """
-    price = serializers.FloatField()
+    price = serializers.SerializerMethodField()
 
     class Meta:
         model = OfferDetail
@@ -175,6 +172,14 @@ class OfferDetailPublicSerializer(serializers.ModelSerializer):
             'id', 'title', 'revisions', 'delivery_time_in_days', 'price',
             'features', 'offer_type',
         ]
+
+    def get_price(self, obj):
+        value = obj.price
+        if value is None:
+            return None
+        if value % 1 == 0:
+            return int(value)
+        return float(value)
 
 class OfferPublicSerializer(serializers.ModelSerializer):
     """

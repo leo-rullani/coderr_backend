@@ -444,3 +444,5 @@ class TestOfferDetailRetrieveAPI:
         url = reverse("offerdetail-detail", args=[9999])
         response = api_client.get(url)
         assert response.status_code == 404
+    
+    
