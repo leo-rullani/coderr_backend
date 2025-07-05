@@ -1,8 +1,11 @@
 asgiref==3.8.1
+certifi==2025.6.15
+charset-normalizer==3.4.2
 Django==5.2.3
 django-cors-headers==4.7.0
 django-filter==25.1
 djangorestframework==3.16.0
+idna==3.10
 iniconfig==2.1.0
 packaging==25.0
 pillow==11.2.1
@@ -10,4 +13,6 @@ pluggy==1.6.0
 Pygments==2.19.2
 pytest==8.4.1
 pytest-django==4.11.1
+requests==2.32.4
 sqlparse==0.5.3
+urllib3==2.5.0
