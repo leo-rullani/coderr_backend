@@ -3,15 +3,15 @@ Serializers for the Orders API.
 """
 
 from rest_framework import serializers
-from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework.exceptions import NotFound, ValidationError, PermissionDenied  # ← neu
 
 from orders_app.models import Order
 from offers_app.models import OfferDetail
 
+
 class StrictFloatField(serializers.FloatField):
     """
-    Ensures that prices are rendered as *int* if they have no
-    fractional component – this exactly matches the API‑spec JSON examples.
+    Renders *price* as **int** if no fractional component is present.
     """
 
     def to_representation(self, value):
@@ -20,11 +20,10 @@ class StrictFloatField(serializers.FloatField):
 
 class OrderSerializer(serializers.ModelSerializer):
     """
-    Read‑only serializer for `Order` objects.
+    Read‑only representation of an `Order`.
 
-    * `customer_user` / `business_user` are returned as plain integer IDs
-      (no nested user objects).
-    * `price` is sent as *int* if it is a whole number.
+    * `customer_user` / `business_user` are delivered as plain integer IDs.
+    * `price` is serialised via `StrictFloatField`.
     """
 
     customer_user = serializers.PrimaryKeyRelatedField(read_only=True)
@@ -48,14 +47,12 @@ class OrderSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
-
 class OrderCreateSerializer(serializers.Serializer):
     """
-    Write‑serializer for creating a new **Order** from an **OfferDetail**.
+    Create a new **Order** based on an existing **OfferDetail**.
 
-    The official field is ``offer_detail_id``.  To stay tolerant with
-    potential camelCase payloads (e.g. *offerDetailId*), we accept **both**
-    spellings and normalise internally.
+    Accepts both `offer_detail_id` (snake_case) and `offerDetailId`
+    (camelCase) for tolerance.
     """
 
     offer_detail_id = serializers.IntegerField(required=False, write_only=True)
@@ -63,15 +60,15 @@ class OrderCreateSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         """
-        1. Accept either ``offer_detail_id`` or ``offerDetailId``.
-        2. Ensure that the referenced OfferDetail actually exists.
-        3. Ensure that the requesting user has role **customer**.
+        1. Extract the ID from either field.
+        2. Ensure the OfferDetail exists.
+        3. Ensure the requesting user has role **customer**.
         """
         raw_id = attrs.get("offer_detail_id") or attrs.get("offerDetailId")
         if raw_id is None:
             raise ValidationError({"offer_detail_id": "This field is required."})
 
-        # normalise key name for downstream code
+        # normalise key
         attrs["offer_detail_id"] = raw_id
         attrs.pop("offerDetailId", None)
 
@@ -82,16 +79,17 @@ class OrderCreateSerializer(serializers.Serializer):
 
         user = self.context["request"].user
         if getattr(user, "role", None) != "customer":
-            raise ValidationError("Only customers can create orders.")
+            # ← neu: 403 statt 400
+            raise PermissionDenied("Only customers can create orders.")
 
         return attrs
 
     def create(self, validated_data):
         """
-        Instantiate a new *Order* based on the validated OfferDetail.
+        Build the Order from the validated OfferDetail.
         """
         user = self.context["request"].user
-        detail = self._detail            # cached in *validate()*
+        detail = self._detail            # cached during validate()
         offer = detail.offer
 
         return Order.objects.create(
@@ -105,9 +103,10 @@ class OrderCreateSerializer(serializers.Serializer):
             offer_type=detail.offer_type,
             status="in_progress",
         )
+
 class OrderStatusUpdateSerializer(serializers.ModelSerializer):
     """
-    Allows business users to update **only** the ``status`` field.
+    Allows the *business user* to update **only** the `status` field.
     """
 
     class Meta:
