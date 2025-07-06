@@ -1,5 +1,5 @@
 """
-Serializers for Offers & OfferDetails.
+Serializers for Offer and OfferDetail objects.
 
 Covered use‑cases
 -----------------
@@ -9,9 +9,9 @@ Covered use‑cases
 * OfferPublicSerializer             – GET  /api/offers/?creator_id=… (reduced list)
 * OfferDetailPublicSerializer       – GET  /api/offerdetails/<id>/   (public)
 
-Helper classes
---------------
-* StrictCharField   – only real strings are accepted (no ints / lists)
+Utility
+-------
+* StrictCharField   – refuses non‑string input
 * StrictFloatField  – renders whole numbers as ``int`` instead of ``float``
 """
 
@@ -22,14 +22,18 @@ from offers_app.models import Offer, OfferDetail
 
 User = get_user_model()
 
+
+# --------------------------------------------------------------------------- #
+#  helpers                                                                    #
+# --------------------------------------------------------------------------- #
 def clean_detail_data(detail: dict) -> dict:
-    """Remove non‑model keys before creating an OfferDetail instance."""
+    """Strip non‑model keys before persisting an OfferDetail."""
     forbidden = {"user", "url"}
     return {k: v for k, v in detail.items() if k not in forbidden}
 
 
 class StrictCharField(serializers.CharField):
-    """CharField that **only** accepts strings (no numbers, lists, …)."""
+    """CharField that accepts **only** genuine strings."""
 
     def to_internal_value(self, data):
         if not isinstance(data, str):
@@ -39,22 +43,32 @@ class StrictCharField(serializers.CharField):
 
 class StrictFloatField(serializers.FloatField):
     """
-    On output, return *int* if the value is a whole number.
-    This exactly matches the examples in the API spec.
+    Cast whole numbers to ``int`` so the JSON output matches the spec
+    (e.g. *100* instead of *100.0*).
     """
 
     def to_representation(self, value):
         if value is None:
             return None
         return int(value) if float(value).is_integer() else float(value)
+
+
+# --------------------------------------------------------------------------- #
+#  nested user chip                                                           #
+# --------------------------------------------------------------------------- #
 class UserDetailsSerializer(serializers.ModelSerializer):
-    """Tiny subset of user data for offer list cards."""
+    """Minimal user info for offer list cards."""
 
     class Meta:
         model = User
         fields = ["first_name", "last_name", "username"]
+
+
+# --------------------------------------------------------------------------- #
+#  detail (read)                                                              #
+# --------------------------------------------------------------------------- #
 class OfferDetailShortSerializer(serializers.ModelSerializer):
-    """Only *id* + *URL* for list‑views."""
+    """Only *id* + hypermedia URL (list view)."""
     url = serializers.SerializerMethodField()
 
     class Meta:
@@ -66,7 +80,7 @@ class OfferDetailShortSerializer(serializers.ModelSerializer):
 
 
 class OfferDetailFullSerializer(serializers.ModelSerializer):
-    """Complete detail representation incl. clean price field."""
+    """Complete detail representation with clean price field."""
     price = StrictFloatField()
 
     class Meta:
@@ -82,12 +96,18 @@ class OfferDetailFullSerializer(serializers.ModelSerializer):
         ]
 
 
+# --------------------------------------------------------------------------- #
+#  detail (write)                                                             #
+# --------------------------------------------------------------------------- #
+# offers_app/api/serializers.py
 class OfferDetailWriteSerializer(serializers.ModelSerializer):
-    """Write‑serializer for nested validation (POST / PATCH)."""
+    """Write serializer for nested detail input (POST / PATCH)."""
+
+    id = serializers.IntegerField(required=False)      # ←  id zulassen
 
     class Meta:
-        model = OfferDetail
-        exclude = ["offer", "id"]
+        model   = OfferDetail
+        exclude = ["offer"]                            # ←  id NICHT mehr ausschließen
 
     def validate(self, data):
         required = [
@@ -105,14 +125,19 @@ class OfferDetailWriteSerializer(serializers.ModelSerializer):
             )
         return data
 
+
+# --------------------------------------------------------------------------- #
+#  offer – CREATE                                                             #
+# --------------------------------------------------------------------------- #
 class OfferCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating an offer with **≥ 3** detail tiers."""
+    """Serializer for creating an offer with **≥ 3** detail tiers."""
     details = OfferDetailWriteSerializer(many=True, write_only=True)
 
     class Meta:
         model = Offer
         fields = ["id", "title", "image", "description", "details"]
 
+    # ---------- validation --------------------------------------------------
     def validate_details(self, value):
         if len(value) < 3:
             raise serializers.ValidationError(
@@ -120,6 +145,7 @@ class OfferCreateSerializer(serializers.ModelSerializer):
             )
         return value
 
+    # ---------- persistence -------------------------------------------------
     def create(self, validated_data):
         details_data = validated_data.pop("details")
         offer = Offer.objects.create(
@@ -139,6 +165,7 @@ class OfferCreateSerializer(serializers.ModelSerializer):
         offer.save(update_fields=["min_price", "min_delivery_time"])
         return offer
 
+    # ---------- representation --------------------------------------------
     def to_representation(self, instance):
         rep = super().to_representation(instance)
         rep["details"] = OfferDetailFullSerializer(
@@ -147,16 +174,29 @@ class OfferCreateSerializer(serializers.ModelSerializer):
         rep["min_price"] = StrictFloatField().to_representation(instance.min_price)
         rep["min_delivery_time"] = instance.min_delivery_time
         return rep
-class OfferDetailSerializer(serializers.ModelSerializer):
-    """Full offer incl. nested PATCH logic (business owner view)."""
 
-    title = StrictCharField()
-    details = OfferDetailWriteSerializer(many=True)
+
+# --------------------------------------------------------------------------- #
+#  offer – DETAIL / PATCH                                                     #
+# --------------------------------------------------------------------------- #
+class OfferDetailSerializer(serializers.ModelSerializer):
+    """
+    Full offer representation used for owner views (GET / PATCH / DELETE).
+
+    * ``details`` accepts nested PATCH input:
+        ─ update by `id`
+        ─ update by unique `offer_type` (if no `id` supplied)
+        ─ create new detail if neither id nor offer_type match an existing one
+    * Aggregates (min_price / min_delivery_time) are re‑calculated automatically.
+    """
+
+    title       = StrictCharField()
+    details     = OfferDetailWriteSerializer(many=True)
     user_details = UserDetailsSerializer(source="user", read_only=True)
-    min_price = StrictFloatField(read_only=True)
+    min_price   = StrictFloatField(read_only=True)
 
     class Meta:
-        model = Offer
+        model  = Offer
         fields = [
             "id",
             "user",
@@ -171,49 +211,73 @@ class OfferDetailSerializer(serializers.ModelSerializer):
             "user_details",
         ]
 
+    # ------------------------------------------------------------------ #
+    #  PATCH                                                             #
+    # ------------------------------------------------------------------ #
     def update(self, instance, validated_data):
         details_data = validated_data.pop("details", None)
 
-        # scalar fields
-        for attr, val in validated_data.items():
-            setattr(instance, attr, val)
+        # ----- scalar fields -------------------------------------------
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
         instance.save()
 
-        # create / update details
+        # ----- nested details ------------------------------------------
         if details_data is not None:
-            existing = {d.id: d for d in instance.details.all()}
+            existing_by_id   = {d.id: d for d in instance.details.all()}
+            existing_by_type = {d.offer_type: d for d in instance.details.all()}
+
             for detail in details_data:
-                detail_id = detail.get("id")
-                if detail_id and detail_id in existing:
-                    obj = existing[detail_id]
+                incoming_id = detail.get("id")
+
+                # ❶ update by explicit ID
+                if incoming_id and incoming_id in existing_by_id:
+                    obj = existing_by_id[incoming_id]
                     for k, v in detail.items():
                         if k != "id":
                             setattr(obj, k, v)
                     obj.save()
-                else:
-                    OfferDetail.objects.create(
-                        offer=instance, **clean_detail_data(detail)
-                    )
+                    continue
 
-        # recalc aggregates
+                # ❷ update by offer_type if no ID given
+                match = existing_by_type.get(detail.get("offer_type"))
+                if match:
+                    for k, v in detail.items():
+                        if k != "id":
+                            setattr(match, k, v)
+                    match.save()
+                    continue
+
+                # ❸ truly new detail
+                OfferDetail.objects.create(
+                    offer=instance, **clean_detail_data(detail)
+                )
+
+        # ----- aggregates ----------------------------------------------
         qs = instance.details.values_list("price", "delivery_time_in_days")
         if qs:
-            prices, dts = zip(*qs)
-            instance.min_price = min(prices)
-            instance.min_delivery_time = min(dts)
+            prices, days = zip(*qs)
+            instance.min_price         = min(prices)
+            instance.min_delivery_time = min(days)
             instance.save(update_fields=["min_price", "min_delivery_time"])
 
         return instance
 
+    # ------------------------------------------------------------------ #
+    #  output                                                            #
+    # ------------------------------------------------------------------ #
     def to_representation(self, instance):
         rep = super().to_representation(instance)
-        rep["details"] = OfferDetailFullSerializer(
-            instance.details.all(), many=True
-        ).data
+        rep["details"]   = OfferDetailFullSerializer(instance.details.all(), many=True).data
         rep["min_price"] = StrictFloatField().to_representation(instance.min_price)
         return rep
+
+
+# --------------------------------------------------------------------------- #
+#  offer – LIST (public grid)                                                 #
+# --------------------------------------------------------------------------- #
 class OfferListSerializer(serializers.ModelSerializer):
-    """List endpoint used by the card grid in the front‑end."""
+    """Card list view used in the public offer grid."""
     details = serializers.SerializerMethodField()
     user_details = UserDetailsSerializer(source="user", read_only=True)
     min_price = StrictFloatField(read_only=True)
@@ -228,9 +292,9 @@ class OfferListSerializer(serializers.ModelSerializer):
             "title",
             "image",
             "description",
-            "created_at",     # original snake_case
+            "created_at",     # snake_case
             "updated_at",
-            "createdAt",      # camelCase alias
+            "createdAt",      # camelCase aliases
             "updatedAt",
             "details",
             "min_price",
@@ -243,7 +307,12 @@ class OfferListSerializer(serializers.ModelSerializer):
             obj.details.filter(id__isnull=False), many=True
         ).data
 
+
+# --------------------------------------------------------------------------- #
+#  offer & detail – public read‑only                                          #
+# --------------------------------------------------------------------------- #
 class OfferDetailPublicSerializer(serializers.ModelSerializer):
+    """Public representation of a single detail tier."""
     price = StrictFloatField()
 
     class Meta:
@@ -260,7 +329,7 @@ class OfferDetailPublicSerializer(serializers.ModelSerializer):
 
 
 class OfferPublicSerializer(serializers.ModelSerializer):
-    """Reduced list serializer for search views."""
+    """Reduced list serializer used by public search endpoints."""
     details = OfferDetailPublicSerializer(many=True, read_only=True)
     min_price = StrictFloatField(read_only=True)
 
