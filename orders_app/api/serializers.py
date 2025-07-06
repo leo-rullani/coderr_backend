@@ -1,17 +1,35 @@
+"""
+Serializers for the Orders API.
+"""
+
 from rest_framework import serializers
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, ValidationError
+
 from orders_app.models import Order
 from offers_app.models import OfferDetail
 
+class StrictFloatField(serializers.FloatField):
+    """
+    Ensures that prices are rendered as *int* if they have no
+    fractional component – this exactly matches the API‑spec JSON examples.
+    """
+
+    def to_representation(self, value):
+        value = float(value) if value is not None else None
+        return int(value) if value is not None and value.is_integer() else value
+
 class OrderSerializer(serializers.ModelSerializer):
     """
-    Serializer for Order model.
-    Ensures that user fields return only integer IDs.
-    Price is rendered as int if it is a whole number.
+    Read‑only serializer for `Order` objects.
+
+    * `customer_user` / `business_user` are returned as plain integer IDs
+      (no nested user objects).
+    * `price` is sent as *int* if it is a whole number.
     """
+
     customer_user = serializers.PrimaryKeyRelatedField(read_only=True)
     business_user = serializers.PrimaryKeyRelatedField(read_only=True)
-    price = serializers.FloatField()
+    price = StrictFloatField()
 
     class Meta:
         model = Order
@@ -30,79 +48,74 @@ class OrderSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
-    def to_representation(self, instance):
-        """
-        Ensures price is rendered as int if it is a whole number.
-        """
-        data = super().to_representation(instance)
-        if data.get("price") is not None:
-            try:
-                float_price = float(data["price"])
-                if float_price.is_integer():
-                    data["price"] = int(float_price)
-                else:
-                    data["price"] = float_price
-            except Exception:
-                pass
-        return data
 
 class OrderCreateSerializer(serializers.Serializer):
     """
-    Serializer for creating a new Order based on OfferDetail.
-    Expects { "offer_detail_id": int }.
-    Only users with the 'customer' role can create orders.
-    """
-    offer_detail_id = serializers.IntegerField()
+    Write‑serializer for creating a new **Order** from an **OfferDetail**.
 
-    def validate_offer_detail_id(self, value):
+    The official field is ``offer_detail_id``.  To stay tolerant with
+    potential camelCase payloads (e.g. *offerDetailId*), we accept **both**
+    spellings and normalise internally.
+    """
+
+    offer_detail_id = serializers.IntegerField(required=False, write_only=True)
+    offerDetailId = serializers.IntegerField(required=False, write_only=True)
+
+    def validate(self, attrs):
         """
-        Validates that the referenced OfferDetail exists.
+        1. Accept either ``offer_detail_id`` or ``offerDetailId``.
+        2. Ensure that the referenced OfferDetail actually exists.
+        3. Ensure that the requesting user has role **customer**.
         """
+        raw_id = attrs.get("offer_detail_id") or attrs.get("offerDetailId")
+        if raw_id is None:
+            raise ValidationError({"offer_detail_id": "This field is required."})
+
+        # normalise key name for downstream code
+        attrs["offer_detail_id"] = raw_id
+        attrs.pop("offerDetailId", None)
+
         try:
-            OfferDetail.objects.get(id=value)
+            self._detail = OfferDetail.objects.select_related("offer").get(id=raw_id)
         except OfferDetail.DoesNotExist:
             raise NotFound("OfferDetail not found.")
-        return value
+
+        user = self.context["request"].user
+        if getattr(user, "role", None) != "customer":
+            raise ValidationError("Only customers can create orders.")
+
+        return attrs
 
     def create(self, validated_data):
         """
-        Creates an Order based on the given OfferDetail.
+        Instantiate a new *Order* based on the validated OfferDetail.
         """
-        request = self.context['request']
-        user = request.user
-
-        if getattr(user, "role", None) != "customer":
-            raise serializers.ValidationError("Only customers can create orders.")
-
-        offer_detail = OfferDetail.objects.get(id=validated_data["offer_detail_id"])
-        offer = offer_detail.offer
+        user = self.context["request"].user
+        detail = self._detail            # cached in *validate()*
+        offer = detail.offer
 
         return Order.objects.create(
             customer_user=user,
             business_user=offer.user,
-            title=offer_detail.title,
-            revisions=offer_detail.revisions,
-            delivery_time_in_days=offer_detail.delivery_time_in_days,
-            price=offer_detail.price,
-            features=offer_detail.features,
-            offer_type=offer_detail.offer_type,
+            title=detail.title,
+            revisions=detail.revisions,
+            delivery_time_in_days=detail.delivery_time_in_days,
+            price=detail.price,
+            features=detail.features,
+            offer_type=detail.offer_type,
             status="in_progress",
         )
-
 class OrderStatusUpdateSerializer(serializers.ModelSerializer):
     """
-    Serializer for updating only the status of an order via PATCH.
-    Allows only 'in_progress', 'completed', or 'cancelled' as status.
+    Allows business users to update **only** the ``status`` field.
     """
+
     class Meta:
         model = Order
         fields = ["status"]
 
     def validate_status(self, value):
-        """
-        Validates that the status is one of the allowed values.
-        """
-        allowed = ["in_progress", "completed", "cancelled"]
+        allowed = {"in_progress", "completed", "cancelled"}
         if value not in allowed:
-            raise serializers.ValidationError(f"Status must be one of {allowed}.")
+            raise ValidationError(f"Status must be one of {sorted(allowed)}.")
         return value
