@@ -21,10 +21,6 @@ from .serializers import RegistrationSerializer
 
 User = get_user_model()
 
-
-# ------------------------------------------------------------------ #
-# Helper: parsers                                                    #
-# ------------------------------------------------------------------ #
 class LenientJSONParser(parsers.JSONParser):
     """Return `{}` instead of 400 for completely empty or invalid JSON bodies."""
     def parse(self, *args, **kwargs):
@@ -33,10 +29,6 @@ class LenientJSONParser(parsers.JSONParser):
         except Exception:
             return {}
 
-
-# ------------------------------------------------------------------ #
-# Helper: make sure a profile row exists                             #
-# ------------------------------------------------------------------ #
 def _ensure_profile(user: User, role: str) -> None:
     """
     Create a minimal customer / business profile if the corresponding model
@@ -52,10 +44,6 @@ def _ensure_profile(user: User, role: str) -> None:
 
     model.objects.get_or_create(user=user)
 
-
-# ------------------------------------------------------------------ #
-# Helper: build demo payload                                         #
-# ------------------------------------------------------------------ #
 def _demo_payload(role: str) -> dict:
     """
     Return a token payload for the given demo `role`.
@@ -81,10 +69,6 @@ def _demo_payload(role: str) -> dict:
         "role": role,
     }
 
-
-# ------------------------------------------------------------------ #
-# Registration endpoint                                              #
-# ------------------------------------------------------------------ #
 class RegistrationView(APIView):
     """Create a new user and return an auth token."""
     def post(self, request):
@@ -107,10 +91,6 @@ class RegistrationView(APIView):
             status=status.HTTP_201_CREATED,
         )
 
-
-# ------------------------------------------------------------------ #
-# Login / demo / guest endpoint                                      #
-# ------------------------------------------------------------------ #
 class LoginView(APIView):
     """
     Unified login endpoint.
@@ -138,7 +118,6 @@ class LoginView(APIView):
     DEMO_USERNAMES = {"demo_business": "business", "demo_customer": "customer"}
     DEMO_ROLES = {"business", "customer"}
 
-    # ----- internal helpers ------------------------------------------
     def _token_response(self, user: User) -> Response:
         token, _ = Token.objects.get_or_create(user=user)
         return Response(
@@ -163,7 +142,6 @@ class LoginView(APIView):
         _ensure_profile(user, role)
         return user
 
-    # ----- main entry point -----------------------------------------
     def post(self, request):
         data = request.data
         username = data.get("username", "").strip()

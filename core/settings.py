@@ -3,12 +3,9 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = "django‑insecure-2!*6$ge)awvr1ou@d8koo+u%*zu48oc$vml0k7u^=jkm66b*14"
-DEBUG = True           # dev‑modus (JSON‑404‑Middleware aktiv)
+DEBUG = True       
 ALLOWED_HOSTS: list[str] = []
 
-# ───────────────────────────────────────────
-#  Apps
-# ───────────────────────────────────────────
 INSTALLED_APPS = [
     # Django core
     "django.contrib.admin",
@@ -25,7 +22,7 @@ INSTALLED_APPS = [
     "django_extensions",
     # project apps
     "auth_app",
-    "users_app.apps.UsersAppConfig",   # ← nur EIN Eintrag!
+    "users_app.apps.UsersAppConfig",   
     "offers_app",
     "orders_app",
     "reviews_app",
@@ -33,9 +30,6 @@ INSTALLED_APPS = [
     "core_utils",
 ]
 
-# ───────────────────────────────────────────
-#  Middleware
-# ───────────────────────────────────────────
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -45,7 +39,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    "core.middleware.ForceJson404Middleware",  # immer JSON‑404
+    "core.middleware.ForceJson404Middleware",  
 ]
 
 ROOT_URLCONF = "core.urls"
@@ -67,9 +61,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "core.wsgi.application"
 
-# ───────────────────────────────────────────
-#  DB
-# ───────────────────────────────────────────
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
@@ -77,9 +68,6 @@ DATABASES = {
     }
 }
 
-# ───────────────────────────────────────────
-#  Auth / i18n / static
-# ───────────────────────────────────────────
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
@@ -96,9 +84,6 @@ STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "auth_app.CustomUser"
 
-# ───────────────────────────────────────────
-#  DRF defaults
-# ───────────────────────────────────────────
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework.authentication.TokenAuthentication",
@@ -116,7 +101,4 @@ REST_FRAMEWORK = {
     ],
 }
 
-# ───────────────────────────────────────────
-#  CORS (DEV)
-# ───────────────────────────────────────────
 CORS_ALLOW_ALL_ORIGINS = True
