@@ -11,13 +11,13 @@ from .permissions import IsReviewerOrReadOnly
 
 class ReviewViewSet(ModelViewSet):
     """
-    ViewSet for CRUD operations on *Review* objects.
+    CRUD endpoint for *Review* objects.
 
-    * **GET** (list / retrieve) – any authenticated user  
-    * **POST** – only *customers* may create a review  
-    * **PATCH / DELETE** – only the review *author* (see permission)
+    * **GET** (list / retrieve) – any authenticated user  
+    * **POST** – only *customers* may create a review  
+    * **PATCH / DELETE** – only the review **author** (see permission)
 
-    The filter backend allows queries such as:
+    Filtering examples:
 
         /api/reviews/?business_user=2
         /api/reviews/?reviewer=1
@@ -26,24 +26,23 @@ class ReviewViewSet(ModelViewSet):
     queryset = Review.objects.all()
     serializer_class = ReviewSerializer
     permission_classes = [IsAuthenticated, IsReviewerOrReadOnly]
-
-    filter_backends = [DjangoFilterBackend, OrderingFilter]
+    pagination_class = None
+    filter_backends  = [DjangoFilterBackend, OrderingFilter]
     filterset_fields = {"business_user": ["exact"], "reviewer": ["exact"]}
-    ordering_fields = ["updated_at", "rating"]
-    ordering = ["-updated_at"]
+    ordering_fields  = ["updated_at", "rating"]
+    ordering         = ["-updated_at"]
 
     def perform_create(self, serializer):
         """
         Attach the current user as *reviewer*.
 
-        Only **customer** accounts are allowed to create reviews.
-        A user counts as customer if *either*
+        A user is considered *customer* if
 
         * `CustomUser.role == "customer"` **or**
         * legacy flag `user.userprofile.is_customer == True`
         """
         user = self.request.user
-        is_customer_role = getattr(user, "role", None) == "customer"
+        is_customer_role    = getattr(user, "role", None) == "customer"
         is_customer_profile = (
             hasattr(user, "userprofile")
             and getattr(user.userprofile, "is_customer", False)
