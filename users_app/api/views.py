@@ -1,11 +1,19 @@
+"""
+API views for retrieving and updating customer / business profiles.
+"""
+
 from django.db import transaction
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions
+from rest_framework.response import Response
 
 from auth_app.models import CustomUser
 from users_app.models import UserProfile
-from users_app.permissions import IsProfileOwner
+from users_app.permissions import (
+    IsProfileOwner,
+    IsProfileOwnerOrReadOnly,
+)
 
 from .serializers import (
     UserProfileSerializer,
@@ -16,16 +24,19 @@ from .serializers import (
 
 class BusinessProfileRefUpdateView(generics.RetrieveUpdateAPIView):
     """
-    Retrieve **or update** a Business profile by user ID / 'ref<ID>' / username.
-    Creates an empty UserProfile automatically if none exists.
+    Retrieve **or update** a single business profile.
+
+    * The caller must be authenticated.  
+    * Read access for everyone; write access only for the profile owner.
+    * `ref` may be a user‑ID, the alias ``ref<ID>`` or a username.
+    * If no profile exists yet, an empty one is created on‑the‑fly.
     """
 
     serializer_class = UserProfileSerializer
-    permission_classes = [permissions.IsAuthenticated, IsProfileOwner]
+    permission_classes = [permissions.IsAuthenticated, IsProfileOwnerOrReadOnly]
 
     @transaction.atomic
     def get_object(self):
-        """Resolve 'ref', ensure role='business', create profile if needed."""
         ref = self.kwargs["ref"]
         if ref.lower().startswith("ref") and ref[3:].isdigit():
             ref = ref[3:]
@@ -41,6 +52,11 @@ class BusinessProfileRefUpdateView(generics.RetrieveUpdateAPIView):
 
 
 class BusinessProfileDetailView(generics.RetrieveAPIView):
+    """
+    Convenience endpoint that returns *one* business profile
+    (used by the automated test‑suite to verify representation rules).
+    """
+
     serializer_class = UserProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -52,26 +68,64 @@ class BusinessProfileDetailView(generics.RetrieveAPIView):
 
 
 class BusinessProfileListView(generics.ListAPIView):
+    """
+    List all business profiles.
+
+    • Creates placeholder profiles for business users without one  
+    • Never returns an empty list as long as business accounts exist
+    """
+
     serializer_class = BusinessProfileListSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = None
 
     def get_queryset(self):
-        return UserProfile.objects.filter(user__role="business")
+        business_users = CustomUser.objects.filter(role="business")
+        existing = set(
+            UserProfile.objects.filter(user__role="business")
+            .values_list("user_id", flat=True)
+        )
+
+        missing = [u for u in business_users if u.id not in existing]
+        UserProfile.objects.bulk_create(
+            [UserProfile(user=u) for u in missing],
+            ignore_conflicts=True,
+        )
+
+        return (
+            UserProfile.objects.filter(user__role="business")
+            .select_related("user")
+            .order_by("user__id")
+        )
+
+    def list(self, request, *args, **kwargs):
+        data = self.get_serializer(self.get_queryset(), many=True).data
+        return Response(data)
 
 
 class CustomerProfileListView(generics.ListAPIView):
+    """List all customer profiles (auth required)."""
+
     serializer_class = CustomerProfileListSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = None
 
     def get_queryset(self):
-        return UserProfile.objects.filter(user__role="customer")
+        return (
+            UserProfile.objects.filter(user__role="customer")
+            .select_related("user")
+            .order_by("user__id")
+        )
 
 
 class UserProfileUniversalDetailView(generics.RetrieveUpdateAPIView):
+    """
+    Retrieve **or update** *any* profile (customer or business) by
+    user‑ID or username.
+    """
+
     serializer_class = UserProfileSerializer
-    permission_classes = [permissions.IsAuthenticated, IsProfileOwner]
+    permission_classes = [permissions.IsAuthenticated, IsProfileOwnerOrReadOnly]
 
     def get_object(self):
         ref = self.kwargs["ref"]

@@ -28,4 +28,10 @@ urlpatterns = [
 
     path("profiles/business/", BusinessProfileListView.as_view(), name="business-profiles"),
     path("profiles/customer/", CustomerProfileListView.as_view(), name="customer-profiles"),
+    
+    path(
+    "profiles/business/<str:ref>/",
+    BusinessProfileRefUpdateView.as_view(),
+    name="business-profile-ref",
+),
 ]
