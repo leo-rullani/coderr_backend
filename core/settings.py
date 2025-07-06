@@ -3,7 +3,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = 'django-insecure-2!*6$ge)awvr1ou@d8koo+u%*zu48oc$vml0k7u^=jkm66b*14'
-DEBUG = True
+DEBUG = True           # bleibt True, weil wir eine JSON‑404‑Middleware nutzen
 ALLOWED_HOSTS = []
 
 INSTALLED_APPS = [
@@ -14,7 +14,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
-    'rest_framework.authtoken', 
+    'rest_framework.authtoken',
     'auth_app',
     'users_app',
     'offers_app',
@@ -24,18 +24,19 @@ INSTALLED_APPS = [
     'core_utils',
     'django_filters',
     'corsheaders',
-     'django_extensions',
+    'django_extensions',
 ]
 
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware',  # <--- NEU GANZ OBEN
-    'django.middleware.common.CommonMiddleware',  # <--- NEU: muss direkt nach corsheaders.middleware.CorsMiddleware stehen
+    'corsheaders.middleware.CorsMiddleware',                # 1
+    'django.middleware.common.CommonMiddleware',            # 2
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'core.middleware.ForceJson404Middleware',               # 🆕  JSON‑404 auch bei DEBUG=True
 ]
 
 ROOT_URLCONF = 'core.urls'
@@ -65,29 +66,22 @@ DATABASES = {
 }
 
 AUTH_PASSWORD_VALIDATORS = [
-    {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
-    },
+    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
 USE_I18N = True
-USE_TZ = True
+USE_TZ     = True
 
 STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = "auth_app.CustomUser"
 
+# -------------  DRF  ---------------- #
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.TokenAuthentication',
@@ -101,18 +95,13 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 10,
     'COERCE_DECIMAL_TO_STRING': False,
 
+    # Nur JSON Renderer — Fehlermeldungen inkl. 401/403 kommen als JSON.
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
     ],
 }
 
 # ---------------------------
-# CORS SETTINGS FÜR FRONTEND
+#  CORS für Frontend (DEV)
 # ---------------------------
-CORS_ALLOW_ALL_ORIGINS = True  # Für DEV ZWECKE!
-# In Produktion besser explizit:
-# CORS_ALLOWED_ORIGINS = [
-#     "http://127.0.0.1:5500",
-#     "http://localhost:5500",
-# ]
-# CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_ALL_ORIGINS = True
