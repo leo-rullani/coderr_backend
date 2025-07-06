@@ -12,7 +12,7 @@ from offers_app.api.serializers import (
     OfferDetailSerializer,
     OfferDetailFullSerializer,
     OfferCreateSerializer,
-    OfferListSerializer,       
+    OfferListSerializer,
 )
 from offers_app.api.permissions import IsBusinessUser, IsOwner
 from offers_app.api.filters import OfferFilter
@@ -20,8 +20,8 @@ from offers_app.api.filters import OfferFilter
 
 class OfferListCreateAPIView(generics.ListCreateAPIView):
     """
-    * GET  – public list (filter, search, ordering)  
-    * POST – create offer (business user)
+    * **GET**   – öffentliche Liste (Filter, Suche, Ordering)  
+    * **POST**  – neues Angebot (nur Business‑User)
     """
 
     queryset = (
@@ -30,6 +30,7 @@ class OfferListCreateAPIView(generics.ListCreateAPIView):
         .select_related("user")
         .distinct()
     )
+
     filter_backends = [
         DjangoFilterBackend,
         filters.SearchFilter,
@@ -44,22 +45,56 @@ class OfferListCreateAPIView(generics.ListCreateAPIView):
         "user__username",
     ]
     filterset_class = OfferFilter
-    ordering_fields = ["updated_at", "min_price_annotated"]
+
+    # Front‑End möchte ?ordering=min_price / -min_price → Alias zulassen
+    ordering_fields = ["updated_at", "min_price_annotated", "min_price"]
     ordering = ["-updated_at"]
 
+    # ------------------------------------------------------------------ #
+    #  helpers                                                           #
+    # ------------------------------------------------------------------ #
+    def _translated_ordering(self, ordering_param: str) -> str:
+        """
+        mappt 'min_price'  → 'min_price_annotated'
+        (behält +/- Präfix bei)
+        """
+        if ordering_param.lstrip("-") == "min_price":
+            prefix = "-" if ordering_param.startswith("-") else ""
+            return f"{prefix}min_price_annotated"
+        return ordering_param
+
+    # ------------------------------------------------------------------ #
+    #  permissions / serializers                                         #
+    # ------------------------------------------------------------------ #
     def get_permissions(self):
         if self.request.method == "POST":
             return [IsAuthenticated(), IsBusinessUser()]
         return [permissions.AllowAny()]
 
     def get_serializer_class(self):
-        return OfferCreateSerializer if self.request.method == "POST" else OfferListSerializer  # 🆕
+        if self.request.method == "POST":
+            return OfferCreateSerializer
+        return OfferListSerializer
+
+    # ------------------------------------------------------------------ #
+    #  queryset override  (ordering‑Alias)                               #
+    # ------------------------------------------------------------------ #
+    def get_queryset(self):
+        qs = super().get_queryset()
+        ordering_param = self.request.query_params.get("ordering")
+        if ordering_param:
+            qs = qs.order_by(self._translated_ordering(ordering_param))
+        return qs
 
     def perform_create(self, serializer):
         serializer.save()
 
 
 class OfferDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    Einzelnes Angebot (GET, PATCH, DELETE).
+    PATCH / DELETE nur für den Besitzer.
+    """
     queryset = Offer.objects.all().select_related("user")
     serializer_class = OfferDetailSerializer
 
@@ -70,6 +105,7 @@ class OfferDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
 
 
 class OfferDetailDetailAPIView(generics.RetrieveAPIView):
+    """Einzelnes *OfferDetail* abrufen (z. B. für Modal im Front‑End)."""
     queryset = OfferDetail.objects.all()
     serializer_class = OfferDetailFullSerializer
     permission_classes = [IsAuthenticated]
