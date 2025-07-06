@@ -30,4 +30,8 @@ urlpatterns = [
         CompletedOrderCountAPIView.as_view(),
         name="completed-order-count",
     ),
+    
+    re_path(r"^order-count/?$", OrderCountAPIView.as_view(), name="order-count-alt"),
+    re_path(r"^completed-order-count/?$", CompletedOrderCountAPIView.as_view(), name="completed-order-count-alt"),
+
 ]
