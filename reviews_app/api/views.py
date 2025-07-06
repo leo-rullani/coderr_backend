@@ -11,16 +11,7 @@ from .permissions import IsReviewerOrReadOnly
 
 class ReviewViewSet(ModelViewSet):
     """
-    CRUD endpoint for *Review* objects.
-
-    * **GET** (list / retrieve) – any authenticated user  
-    * **POST** – only *customers* may create a review  
-    * **PATCH / DELETE** – only the review **author** (see permission)
-
-    Filtering examples:
-
-        /api/reviews/?business_user=2
-        /api/reviews/?reviewer=1
+    CRUD endpoint for **Review** objects.
     """
 
     queryset = Review.objects.all()
@@ -31,12 +22,29 @@ class ReviewViewSet(ModelViewSet):
     filterset_fields = {"business_user": ["exact"], "reviewer": ["exact"]}
     ordering_fields  = ["updated_at", "rating"]
     ordering         = ["-updated_at"]
+    def get_queryset(self):
+        """
+        Extend default queryset to honour the alias parameters
+        `business_user_id` and `reviewer_id`, which are used by
+        the automated test‑suite.
+        """
+        qs = super().get_queryset()
+
+        b_id = self.request.query_params.get("business_user_id")
+        if b_id is not None:
+            qs = qs.filter(business_user_id=b_id)
+
+        r_id = self.request.query_params.get("reviewer_id")
+        if r_id is not None:
+            qs = qs.filter(reviewer_id=r_id)
+
+        return qs
 
     def perform_create(self, serializer):
         """
-        Attach the current user as *reviewer*.
+        Attach current user as *reviewer*.
 
-        A user is considered *customer* if
+        A user counts as *customer* if
 
         * `CustomUser.role == "customer"` **or**
         * legacy flag `user.userprofile.is_customer == True`
