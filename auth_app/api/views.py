@@ -1,3 +1,16 @@
+"""
+Authentication API views.
+
+Endpoints
+---------
+POST /api/registration/   – create a new account, return auth token
+POST /api/login/          – unified login (regular + demo + guest)
+
+Demo / guest behaviour
+----------------------
+See `LoginView` class docstring.
+"""
+from django.apps import apps
 from django.contrib.auth import get_user_model, authenticate
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -10,28 +23,55 @@ User = get_user_model()
 
 
 # ------------------------------------------------------------------ #
-#  lenient JSON parser: empty body ⇒ {} instead of 400               #
+# Helper: parsers                                                    #
 # ------------------------------------------------------------------ #
 class LenientJSONParser(parsers.JSONParser):
-    def parse(self, stream, media_type=None, parser_context=None):
+    """Return `{}` instead of 400 for completely empty or invalid JSON bodies."""
+    def parse(self, *args, **kwargs):
         try:
-            return super().parse(stream, media_type, parser_context)
-        except Exception:                 # empty or invalid JSON → treat as {}
+            return super().parse(*args, **kwargs)
+        except Exception:
             return {}
 
 
 # ------------------------------------------------------------------ #
-#  demo helpers                                                      #
+# Helper: make sure a profile row exists                             #
+# ------------------------------------------------------------------ #
+def _ensure_profile(user: User, role: str) -> None:
+    """
+    Create a minimal customer / business profile if the corresponding model
+    exists and no profile row is present yet.
+    """
+    try:
+        if role == "business":
+            model = apps.get_model("users_app", "BusinessProfile")
+        else:
+            model = apps.get_model("users_app", "CustomerProfile")
+    except LookupError:
+        return  # profile models not part of this project – just ignore
+
+    model.objects.get_or_create(user=user)
+
+
+# ------------------------------------------------------------------ #
+# Helper: build demo payload                                         #
 # ------------------------------------------------------------------ #
 def _demo_payload(role: str) -> dict:
+    """
+    Return a token payload for the given demo `role`.
+    A demo user and a matching profile are created on first use.
+    """
     username = f"demo_{role}"
     defaults = {"email": f"{username}@example.com"}
     if hasattr(User, "role"):
         defaults["role"] = role
+
     user, created = User.objects.get_or_create(username=username, defaults=defaults)
     if created:
         user.set_password("demo123")
         user.save()
+    _ensure_profile(user, role)
+
     token, _ = Token.objects.get_or_create(user=user)
     return {
         "token": token.key,
@@ -43,36 +83,95 @@ def _demo_payload(role: str) -> dict:
 
 
 # ------------------------------------------------------------------ #
-#  registration                                                      #
+# Registration endpoint                                              #
 # ------------------------------------------------------------------ #
 class RegistrationView(APIView):
+    """Create a new user and return an auth token."""
     def post(self, request):
         serializer = RegistrationSerializer(data=request.data)
-        if serializer.is_valid():
-            user = serializer.save()
-            token = Token.objects.get(user=user)
-            return Response(
-                {
-                    "token": token.key,
-                    "username": user.username,
-                    "email": user.email,
-                    "user_id": user.id,
-                },
-                status=status.HTTP_201_CREATED,
-            )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+        user = serializer.save()
+        # Optional: auto‑create a customer profile for newly registered users.
+        _ensure_profile(user, getattr(user, "role", "customer"))
+
+        token = Token.objects.get(user=user)
+        return Response(
+            {
+                "token": token.key,
+                "username": user.username,
+                "email": user.email,
+                "user_id": user.id,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+# ------------------------------------------------------------------ #
+# Login / demo / guest endpoint                                      #
+# ------------------------------------------------------------------ #
 class LoginView(APIView):
-    # … parser_classes, auth, permission bleiben unverändert …
+    """
+    Unified login endpoint.
 
-    DEMO_USERS = {"demo_business": "business", "demo_customer": "customer"}
+    Behaviour priority (top‑most rule that matches wins):
 
+    1. **Empty body**               → both demo tokens (`business`, `customer`)
+    2. **Only `role` field**        → single demo token for that role
+    3. **Username `demo_*`**        → single demo token (no pwd required)
+    4. **Guest creds `kevin/andrey`**
+       – if pwd omitted, default pwd is used
+       – user & profile are created/updated as needed
+    5. **Regular username+password**
+       → normal authentication
+    """
+    parser_classes = [LenientJSONParser, parsers.FormParser]
+    authentication_classes = []
+    permission_classes = []
+
+    # (front‑end) guest users
+    GUEST_MAP = {
+        "kevin":  ("business", "asdasd24"),
+        "andrey": ("customer", "asdasd"),
+    }
+    DEMO_USERNAMES = {"demo_business": "business", "demo_customer": "customer"}
+    DEMO_ROLES = {"business", "customer"}
+
+    # ----- internal helpers ------------------------------------------
+    def _token_response(self, user: User) -> Response:
+        token, _ = Token.objects.get_or_create(user=user)
+        return Response(
+            {
+                "token": token.key,
+                "username": user.username,
+                "email": user.email,
+                "user_id": user.id,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    def _ensure_guest_user(self, username: str, password: str, role: str) -> User:
+        defaults = {"email": f"{username}@example.com"}
+        if hasattr(User, "role"):
+            defaults["role"] = role
+
+        user, created = User.objects.get_or_create(username=username, defaults=defaults)
+        if created or not user.check_password(password):
+            user.set_password(password)
+            user.save()
+        _ensure_profile(user, role)
+        return user
+
+    # ----- main entry point -----------------------------------------
     def post(self, request):
-        username = request.data.get("username")
-        password = request.data.get("password")
+        data = request.data
+        username = data.get("username", "").strip()
+        password = data.get("password", "")
+        role     = data.get("role", "").strip().lower()
 
-        # ❶  Demo‑Login – gar keine Credentials ODER nur leere Strings
-        if not username and not password:
+        # 1) completely empty body
+        if not username and not password and not role:
             return Response(
                 {
                     "business": _demo_payload("business"),
@@ -81,29 +180,30 @@ class LoginView(APIView):
                 status=status.HTTP_200_OK,
             )
 
-        # ❷  Demo‑Login – es steht "demo_customer" o. Ä. im Feld,
-        #     aber kein Passwort
-        if username in self.DEMO_USERS and not password:
+        # 2) only role
+        if role in self.DEMO_ROLES and not username and not password:
+            return Response(_demo_payload(role), status=status.HTTP_200_OK)
+
+        # 3) demo username without pwd
+        if username in self.DEMO_USERNAMES and not password:
             return Response(
-                _demo_payload(self.DEMO_USERS[username]),
+                _demo_payload(self.DEMO_USERNAMES[username]),
                 status=status.HTTP_200_OK,
             )
 
-        # ❸  Normales Login
+        # 4) guest credentials
+        if username in self.GUEST_MAP:
+            expected_role, default_pw = self.GUEST_MAP[username]
+            pwd = password or default_pw
+            user = authenticate(username=username, password=pwd)
+            if not user:
+                user = self._ensure_guest_user(username, pwd, expected_role)
+            return self._token_response(user)
+
+        # 5) regular login
         user = authenticate(username=username, password=password)
         if user:
-            token, _ = Token.objects.get_or_create(user=user)
-            return Response(
-                {
-                    "token": token.key,
-                    "username": user.username,
-                    "email": user.email,
-                    "user_id": user.id,
-                },
-                status=status.HTTP_200_OK,
-            )
+            _ensure_profile(user, getattr(user, "role", "customer"))
+            return self._token_response(user)
 
-        return Response(
-            {"error": "Invalid credentials"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+        return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)

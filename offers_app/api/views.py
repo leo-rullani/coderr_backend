@@ -1,5 +1,8 @@
 """
-API views for Offers and OfferDetails.
+Offer & OfferDetail API endpoints.
+
+Endpoints
+---------
 """
 
 from django.db.models import Min
@@ -17,18 +20,17 @@ from offers_app.api.serializers import (
 from offers_app.api.permissions import IsBusinessUser, IsOwner
 from offers_app.api.filters import OfferFilter
 
-
 class OfferListCreateAPIView(generics.ListCreateAPIView):
     """
-    * **GET**   – öffentliche Liste (Filter, Suche, Ordering)  
-    * **POST**  – neues Angebot (nur Business‑User)
+    * **GET**  – public list with pagination, filters, search & ordering  
+    * **POST** – create a new offer; only authenticated **business** users
     """
 
     queryset = (
         Offer.objects.all()
         .annotate(min_price_annotated=Min("details__price"))
         .select_related("user")
-        .distinct()
+        .distinct()  # prevents duplicates when joining for search
     )
 
     filter_backends = [
@@ -46,39 +48,29 @@ class OfferListCreateAPIView(generics.ListCreateAPIView):
     ]
     filterset_class = OfferFilter
 
-    # Front‑End möchte ?ordering=min_price / -min_price → Alias zulassen
+    # the front‑end requests ?ordering=min_price / -min_price
     ordering_fields = ["updated_at", "min_price_annotated", "min_price"]
     ordering = ["-updated_at"]
 
-    # ------------------------------------------------------------------ #
-    #  helpers                                                           #
-    # ------------------------------------------------------------------ #
-    def _translated_ordering(self, ordering_param: str) -> str:
+    @staticmethod
+    def _translated_ordering(ordering_param: str) -> str:
         """
-        mappt 'min_price'  → 'min_price_annotated'
-        (behält +/- Präfix bei)
+        Translate the alias *min_price* → *min_price_annotated*,
+        keeping a potential '-' prefix.
         """
         if ordering_param.lstrip("-") == "min_price":
-            prefix = "-" if ordering_param.startswith("-") else ""
-            return f"{prefix}min_price_annotated"
+            sign = "-" if ordering_param.startswith("-") else ""
+            return f"{sign}min_price_annotated"
         return ordering_param
 
-    # ------------------------------------------------------------------ #
-    #  permissions / serializers                                         #
-    # ------------------------------------------------------------------ #
     def get_permissions(self):
         if self.request.method == "POST":
             return [IsAuthenticated(), IsBusinessUser()]
         return [permissions.AllowAny()]
 
     def get_serializer_class(self):
-        if self.request.method == "POST":
-            return OfferCreateSerializer
-        return OfferListSerializer
+        return OfferCreateSerializer if self.request.method == "POST" else OfferListSerializer
 
-    # ------------------------------------------------------------------ #
-    #  queryset override  (ordering‑Alias)                               #
-    # ------------------------------------------------------------------ #
     def get_queryset(self):
         qs = super().get_queryset()
         ordering_param = self.request.query_params.get("ordering")
@@ -87,25 +79,26 @@ class OfferListCreateAPIView(generics.ListCreateAPIView):
         return qs
 
     def perform_create(self, serializer):
-        serializer.save()
-
+        serializer.save()  # user is injected by the serializer context
 
 class OfferDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
     """
-    Einzelnes Angebot (GET, PATCH, DELETE).
-    PATCH / DELETE nur für den Besitzer.
+    Retrieve, partially update or delete a single **Offer**.
+
+    * GET    – allowed for any authenticated user  
+    * PATCH  – owner only  
+    * DELETE – owner only (returns **204 No Content**)
     """
     queryset = Offer.objects.all().select_related("user")
     serializer_class = OfferDetailSerializer
 
     def get_permissions(self):
-        if self.request.method in ["PATCH", "PUT", "DELETE"]:
+        if self.request.method in {"PATCH", "PUT", "DELETE"}:
             return [IsAuthenticated(), IsOwner()]
         return [IsAuthenticated()]
 
-
 class OfferDetailDetailAPIView(generics.RetrieveAPIView):
-    """Einzelnes *OfferDetail* abrufen (z. B. für Modal im Front‑End)."""
+    """Retrieve a single *OfferDetail* (line item) – authentication required."""
     queryset = OfferDetail.objects.all()
     serializer_class = OfferDetailFullSerializer
     permission_classes = [IsAuthenticated]
