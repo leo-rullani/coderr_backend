@@ -12,7 +12,7 @@ from offers_app.api.serializers import (
     OfferDetailSerializer,
     OfferDetailFullSerializer,
     OfferCreateSerializer,
-    OfferPublicSerializer,
+    OfferListSerializer,       
 )
 from offers_app.api.permissions import IsBusinessUser, IsOwner
 from offers_app.api.filters import OfferFilter
@@ -20,21 +20,21 @@ from offers_app.api.filters import OfferFilter
 
 class OfferListCreateAPIView(generics.ListCreateAPIView):
     """
-    Offers collection endpoint.
-
-    * **GET** – public listing; supports filter, search, ordering  
-    * **POST** – create new offer; requires *business* authentication
+    * GET  – public list (filter, search, ordering)  
+    * POST – create offer (business user)
     """
 
     queryset = (
         Offer.objects.all()
         .annotate(min_price_annotated=Min("details__price"))
         .select_related("user")
-        .distinct()  # avoid duplicates when joining for search
+        .distinct()
     )
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-
-    # Search now covers main fields *and* nested detail/user fields
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
     search_fields = [
         "title",
         "description",
@@ -43,54 +43,33 @@ class OfferListCreateAPIView(generics.ListCreateAPIView):
         "details__offer_type",
         "user__username",
     ]
-
     filterset_class = OfferFilter
     ordering_fields = ["updated_at", "min_price_annotated"]
     ordering = ["-updated_at"]
 
     def get_permissions(self):
-        """Return the permission set that applies to the current HTTP method."""
         if self.request.method == "POST":
             return [IsAuthenticated(), IsBusinessUser()]
         return [permissions.AllowAny()]
 
     def get_serializer_class(self):
-        """Return write‑ or read‑serializer depending on the HTTP method."""
-        return OfferCreateSerializer if self.request.method == "POST" else OfferPublicSerializer
+        return OfferCreateSerializer if self.request.method == "POST" else OfferListSerializer  # 🆕
 
     def perform_create(self, serializer):
-        """
-        Persist the new offer.
-
-        The OfferCreateSerializer already assigns ``user`` from the request
-        context, so we simply call ``save()`` without extra arguments to
-        avoid passing ``user`` twice.
-        """
         serializer.save()
 
 
 class OfferDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
-    """
-    Single offer endpoint.
-
-    * **GET**    – any authenticated user  
-    * **PATCH / PUT / DELETE** – owner only  
-    * DELETE returns *204 No Content* on success
-    """
-
     queryset = Offer.objects.all().select_related("user")
     serializer_class = OfferDetailSerializer
 
     def get_permissions(self):
-        """Apply owner check for write actions."""
         if self.request.method in ["PATCH", "PUT", "DELETE"]:
             return [IsAuthenticated(), IsOwner()]
         return [IsAuthenticated()]
 
 
 class OfferDetailDetailAPIView(generics.RetrieveAPIView):
-    """Retrieve a single *OfferDetail* (nested line of an offer)."""
-
     queryset = OfferDetail.objects.all()
     serializer_class = OfferDetailFullSerializer
     permission_classes = [IsAuthenticated]
