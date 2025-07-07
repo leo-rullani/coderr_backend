@@ -7,30 +7,19 @@ from rest_framework.permissions import BasePermission
 
 class IsBusinessUser(BasePermission):
     """
-    Allow access only to *business* accounts.
+    Allow access **only** to accounts whose ``role`` is ``"business"``.
 
-    The check succeeds if either
-
-    1. ``CustomUser.role`` equals ``"business"`` (current accounts), **or**
-    2. the related ``UserProfile`` exists and ``is_customer`` is ``False``
-       (legacy accounts created before the ``role`` field was introduced).
+    ‑ No fallback to legacy profile flags – the test‑suite differentiates
+      strictly über ``CustomUser.role``.
     """
 
     def has_permission(self, request, view):
-        user = request.user
-        if not user.is_authenticated:
-            return False
-        if getattr(user, "role", None) == "business":
-            return True
-        profile = getattr(user, "userprofile", None)
-        return bool(profile and not getattr(profile, "is_customer", True))
+        return request.user.is_authenticated and getattr(request.user, "role", "") == "business"
 
 
 class IsOwner(BasePermission):
     """
-    Grant object‑level access only to the owner of the object.
-
-    The object must expose a ``user`` attribute that references its owner.
+    Object‑level access limited to the related ``user``.
     """
 
     def has_object_permission(self, request, view, obj):

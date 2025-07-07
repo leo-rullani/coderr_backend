@@ -1,14 +1,12 @@
 """
 Offer & OfferDetail API endpoints.
-
-Endpoints
----------
 """
 
 from django.db.models import Min
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import generics, filters, permissions
+from rest_framework import generics, filters, permissions, status
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import PermissionDenied
 
 from offers_app.models import Offer, OfferDetail
 from offers_app.api.serializers import (
@@ -20,25 +18,26 @@ from offers_app.api.serializers import (
 from offers_app.api.permissions import IsBusinessUser, IsOwner
 from offers_app.api.filters import OfferFilter
 
+
+# --------------------------------------------------------------------------- #
+#  LIST + CREATE                                                              #
+# --------------------------------------------------------------------------- #
 class OfferListCreateAPIView(generics.ListCreateAPIView):
     """
-    * **GET**  – public list with pagination, filters, search & ordering  
-    * **POST** – create a new offer; only authenticated **business** users
+    • **GET**   public list with pagination, filters, search & ordering  
+    • **POST**  create a new offer – *authenticated* **business** users only
     """
 
     queryset = (
         Offer.objects.all()
         .annotate(min_price_annotated=Min("details__price"))
         .select_related("user")
-        .distinct()  # prevents duplicates when joining for search
+        .distinct()
     )
 
-    filter_backends = [
-        DjangoFilterBackend,
-        filters.SearchFilter,
-        filters.OrderingFilter,
-    ]
-    search_fields = [
+    # ----------- filters / ordering ---------------------------------------
+    filter_backends   = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    search_fields     = [
         "title",
         "description",
         "details__title",
@@ -46,49 +45,50 @@ class OfferListCreateAPIView(generics.ListCreateAPIView):
         "details__offer_type",
         "user__username",
     ]
-    filterset_class = OfferFilter
-
-    # the front‑end requests ?ordering=min_price / -min_price
-    ordering_fields = ["updated_at", "min_price_annotated", "min_price"]
-    ordering = ["-updated_at"]
+    filterset_class   = OfferFilter
+    ordering_fields   = ["updated_at", "min_price_annotated", "min_price"]
+    ordering          = ["-updated_at"]
 
     @staticmethod
-    def _translated_ordering(ordering_param: str) -> str:
-        """
-        Translate the alias *min_price* → *min_price_annotated*,
-        keeping a potential '-' prefix.
-        """
-        if ordering_param.lstrip("-") == "min_price":
-            sign = "-" if ordering_param.startswith("-") else ""
-            return f"{sign}min_price_annotated"
-        return ordering_param
+    def _translated_ordering(param: str) -> str:
+        """Translate *min_price* → *min_price_annotated* (keeps '-' prefix)."""
+        if param.lstrip("-") == "min_price":
+            return f"{'-' if param.startswith('-') else ''}min_price_annotated"
+        return param
 
+    # ----------- permissions ---------------------------------------------
     def get_permissions(self):
         if self.request.method == "POST":
             return [IsAuthenticated(), IsBusinessUser()]
         return [permissions.AllowAny()]
 
+    # ----------- serializer ----------------------------------------------
     def get_serializer_class(self):
         return OfferCreateSerializer if self.request.method == "POST" else OfferListSerializer
 
+    # ----------- queryset modifications ----------------------------------
     def get_queryset(self):
         qs = super().get_queryset()
-        ordering_param = self.request.query_params.get("ordering")
-        if ordering_param:
-            qs = qs.order_by(self._translated_ordering(ordering_param))
+        ordering = self.request.query_params.get("ordering")
+        if ordering:
+            qs = qs.order_by(self._translated_ordering(ordering))
         return qs
 
+    # ----------- create ---------------------------------------------------
+    # NEU  – Serializer bekommt keine doppelten Schlüssel mehr
     def perform_create(self, serializer):
-        serializer.save()  # user is injected by the serializer context
+        serializer.save()                     # user wird bereits in create() gesetzt
 
+# --------------------------------------------------------------------------- #
+#  DETAIL / PATCH / DELETE                                                    #
+# --------------------------------------------------------------------------- #
 class OfferDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
     """
-    Retrieve, partially update or delete a single **Offer**.
-
-    * GET    – allowed for any authenticated user  
-    * PATCH  – owner only  
-    * DELETE – owner only (returns **204 No Content**)
+    • **GET**      any authenticated user  
+    • **PATCH**    owner only – returns **400** on invalid body  
+    • **DELETE**   owner only – returns **204 No Content**
     """
+
     queryset = Offer.objects.all().select_related("user")
     serializer_class = OfferDetailSerializer
 
@@ -97,8 +97,19 @@ class OfferDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
             return [IsAuthenticated(), IsOwner()]
         return [IsAuthenticated()]
 
+    # override to ensure the object is retrieved first → wrong‑owner → 403
+    def get_object(self):
+        obj = super().get_object()
+        # object‑level permission check happens here
+        self.check_object_permissions(self.request, obj)
+        return obj
+
+
+# --------------------------------------------------------------------------- #
+#  DETAIL OF A SINGLE OFFER‑LINE‑ITEM                                         #
+# --------------------------------------------------------------------------- #
 class OfferDetailDetailAPIView(generics.RetrieveAPIView):
-    """Retrieve a single *OfferDetail* (line item) – authentication required."""
+    """Retrieve a single *OfferDetail* (authentication required)."""
     queryset = OfferDetail.objects.all()
     serializer_class = OfferDetailFullSerializer
     permission_classes = [IsAuthenticated]
