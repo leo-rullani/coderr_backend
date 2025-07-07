@@ -5,11 +5,8 @@ Endpoints
 ---------
 POST /api/registration/   – create a new account, return auth token
 POST /api/login/          – unified login (regular + demo + guest)
-
-Demo / guest behaviour
-----------------------
-See `LoginView` class docstring.
 """
+
 from django.apps import apps
 from django.contrib.auth import get_user_model, authenticate
 from rest_framework.views import APIView
@@ -21,33 +18,35 @@ from .serializers import RegistrationSerializer
 
 User = get_user_model()
 
+
+# -------------------------------------------------------------------------
+# Helpers
+# -------------------------------------------------------------------------
 class LenientJSONParser(parsers.JSONParser):
-    """Return `{}` instead of 400 for completely empty or invalid JSON bodies."""
+    """Return `{}` instead of 400 for completely empty or malformed JSON."""
     def parse(self, *args, **kwargs):
         try:
             return super().parse(*args, **kwargs)
         except Exception:
-            return {}
+            return {}  # silently swallow parse errors
+
 
 def _ensure_profile(user: User, role: str) -> None:
-    """
-    Create a minimal customer / business profile if the corresponding model
-    exists and no profile row is present yet.
-    """
+    """Create a minimal customer/business profile if none exists yet."""
     try:
-        if role == "business":
-            model = apps.get_model("users_app", "BusinessProfile")
-        else:
-            model = apps.get_model("users_app", "CustomerProfile")
+        model = apps.get_model(
+            "users_app", "BusinessProfile" if role == "business" else "CustomerProfile"
+        )
     except LookupError:
-        return  # profile models not part of this project – just ignore
+        return  # profile models not installed – ignore
 
     model.objects.get_or_create(user=user)
 
+
 def _demo_payload(role: str) -> dict:
     """
-    Return a token payload for the given demo `role`.
-    A demo user and a matching profile are created on first use.
+    Return a ready‑to‑use demo token payload for the given `role`.
+    A demo user + profile are created on first use.
     """
     username = f"demo_{role}"
     defaults = {"email": f"{username}@example.com"}
@@ -69,42 +68,48 @@ def _demo_payload(role: str) -> dict:
         "role": role,
     }
 
+
+# -------------------------------------------------------------------------
+# Views
+# -------------------------------------------------------------------------
 class RegistrationView(APIView):
-    """Create a new user and return an auth token."""
+    """Create a new user and immediately return an auth token."""
+    parser_classes = [LenientJSONParser, parsers.FormParser]
+
     def post(self, request):
         serializer = RegistrationSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         user = serializer.save()
-        # Optional: auto‑create a customer profile for newly registered users.
         _ensure_profile(user, getattr(user, "role", "customer"))
 
-        token = Token.objects.get(user=user)
+        token, _ = Token.objects.get_or_create(user=user)
         return Response(
             {
                 "token": token.key,
                 "username": user.username,
                 "email": user.email,
                 "user_id": user.id,
+                "role": user.role,
             },
             status=status.HTTP_201_CREATED,
         )
 
+
 class LoginView(APIView):
     """
-    Unified login endpoint.
+    Unified login endpoint with demo and guest shortcuts.
 
-    Behaviour priority (top‑most rule that matches wins):
+    Match order (first rule that applies wins):
 
     1. **Empty body**               → both demo tokens (`business`, `customer`)
-    2. **Only `role` field**        → single demo token for that role
-    3. **Username `demo_*`**        → single demo token (no pwd required)
+    2. **Only `role`/`type` field** → single demo token for that role
+    3. **Username `demo_*`**        → demo token (no password)
     4. **Guest creds `kevin/andrey`**
-       – if pwd omitted, default pwd is used
+       – default password is used when omitted
        – user & profile are created/updated as needed
     5. **Regular username+password**
-       → normal authentication
     """
     parser_classes = [LenientJSONParser, parsers.FormParser]
     authentication_classes = []
@@ -118,6 +123,9 @@ class LoginView(APIView):
     DEMO_USERNAMES = {"demo_business": "business", "demo_customer": "customer"}
     DEMO_ROLES = {"business", "customer"}
 
+    # ---------------------------------------------------------------------
+    # Internals
+    # ---------------------------------------------------------------------
     def _token_response(self, user: User) -> Response:
         token, _ = Token.objects.get_or_create(user=user)
         return Response(
@@ -126,6 +134,7 @@ class LoginView(APIView):
                 "username": user.username,
                 "email": user.email,
                 "user_id": user.id,
+                "role": getattr(user, "role", "customer"),
             },
             status=status.HTTP_200_OK,
         )
@@ -142,13 +151,17 @@ class LoginView(APIView):
         _ensure_profile(user, role)
         return user
 
+    # ---------------------------------------------------------------------
+    # POST handler
+    # ---------------------------------------------------------------------
     def post(self, request):
         data = request.data
         username = data.get("username", "").strip()
         password = data.get("password", "")
-        role     = data.get("role", "").strip().lower()
+        # accept both aliases
+        role = (data.get("role") or data.get("type") or "").strip().lower()
 
-        # 1) completely empty body
+        # 1) completely empty body  ---------------------------------------
         if not username and not password and not role:
             return Response(
                 {
@@ -158,18 +171,18 @@ class LoginView(APIView):
                 status=status.HTTP_200_OK,
             )
 
-        # 2) only role
+        # 2) only role/type  ----------------------------------------------
         if role in self.DEMO_ROLES and not username and not password:
             return Response(_demo_payload(role), status=status.HTTP_200_OK)
 
-        # 3) demo username without pwd
+        # 3) demo username without pwd  -----------------------------------
         if username in self.DEMO_USERNAMES and not password:
             return Response(
                 _demo_payload(self.DEMO_USERNAMES[username]),
                 status=status.HTTP_200_OK,
             )
 
-        # 4) guest credentials
+        # 4) guest credentials  -------------------------------------------
         if username in self.GUEST_MAP:
             expected_role, default_pw = self.GUEST_MAP[username]
             pwd = password or default_pw
@@ -178,10 +191,12 @@ class LoginView(APIView):
                 user = self._ensure_guest_user(username, pwd, expected_role)
             return self._token_response(user)
 
-        # 5) regular login
+        # 5) regular login  -----------------------------------------------
         user = authenticate(username=username, password=password)
         if user:
             _ensure_profile(user, getattr(user, "role", "customer"))
             return self._token_response(user)
 
-        return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST
+        )
