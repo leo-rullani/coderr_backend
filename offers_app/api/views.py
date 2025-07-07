@@ -6,7 +6,7 @@ from django.db.models import Min
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import generics, filters, permissions, status
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError   
 
 from offers_app.models import Offer, OfferDetail
 from offers_app.api.serializers import (
@@ -77,7 +77,8 @@ class OfferListCreateAPIView(generics.ListCreateAPIView):
     # ----------- create ---------------------------------------------------
     # NEU  – Serializer bekommt keine doppelten Schlüssel mehr
     def perform_create(self, serializer):
-        serializer.save()                     # user wird bereits in create() gesetzt
+        serializer.save()                  
+
 
 # --------------------------------------------------------------------------- #
 #  DETAIL / PATCH / DELETE                                                    #
@@ -103,6 +104,16 @@ class OfferDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
         # object‑level permission check happens here
         self.check_object_permissions(self.request, obj)
         return obj
+
+    # ----------- PATCH / PUT ---------------------------------------------
+    def update(self, request, *args, **kwargs):
+        if not request.data:                                         
+            raise ValidationError({"detail": "Request body may not be empty."})
+
+        try:
+            return super().update(request, *args, **kwargs)
+        except ValidationError as exc:                               
+            return self.handle_exception(exc)
 
 
 # --------------------------------------------------------------------------- #

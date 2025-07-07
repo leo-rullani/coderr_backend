@@ -327,7 +327,6 @@ class OfferDetailPublicSerializer(serializers.ModelSerializer):
             "offer_type",
         ]
 
-
 class OfferPublicSerializer(serializers.ModelSerializer):
     """Reduced list serializer used by public search endpoints."""
     details = OfferDetailPublicSerializer(many=True, read_only=True)
