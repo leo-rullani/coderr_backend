@@ -6,14 +6,13 @@ Endpoints
 POST /api/registration/   – create a new account, return auth token
 POST /api/login/          – unified login (regular + demo + guest)
 """
-
-from django.apps import apps
 from django.contrib.auth import get_user_model, authenticate
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, parsers
 from rest_framework.authtoken.models import Token
 
+from users_app.models import UserProfile
 from .serializers import RegistrationSerializer
 
 User = get_user_model()
@@ -32,15 +31,14 @@ class LenientJSONParser(parsers.JSONParser):
 
 
 def _ensure_profile(user: User, role: str) -> None:
-    """Create a minimal customer/business profile if none exists yet."""
-    try:
-        model = apps.get_model(
-            "users_app", "BusinessProfile" if role == "business" else "CustomerProfile"
-        )
-    except LookupError:
-        return  # profile models not installed – ignore
-
-    model.objects.get_or_create(user=user)
+    """
+    Guarantee that exactly one `UserProfile` exists and its `type`
+    matches the user’s role (`customer` / `business`).
+    """
+    UserProfile.objects.update_or_create(
+        user=user,
+        defaults={"type": role},
+    )
 
 
 def _demo_payload(role: str) -> dict:
@@ -124,8 +122,6 @@ class LoginView(APIView):
     DEMO_ROLES = {"business", "customer"}
 
     # ---------------------------------------------------------------------
-    # Internals
-    # ---------------------------------------------------------------------
     def _token_response(self, user: User) -> Response:
         token, _ = Token.objects.get_or_create(user=user)
         return Response(
@@ -151,8 +147,6 @@ class LoginView(APIView):
         _ensure_profile(user, role)
         return user
 
-    # ---------------------------------------------------------------------
-    # POST handler
     # ---------------------------------------------------------------------
     def post(self, request):
         data = request.data
