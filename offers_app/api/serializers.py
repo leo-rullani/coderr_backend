@@ -194,21 +194,13 @@ class OfferDetailSerializer(serializers.ModelSerializer):
     details     = OfferDetailWriteSerializer(many=True)
     user_details = UserDetailsSerializer(source="user", read_only=True)
     min_price   = StrictFloatField(read_only=True)
-
+    
     class Meta:
         model  = Offer
         fields = [
-            "id",
-            "user",
-            "title",
-            "image",
-            "description",
-            "created_at",
-            "updated_at",
-            "details",
-            "min_price",
-            "min_delivery_time",
-            "user_details",
+            "id", "user", "title", "image", "description",
+            "created_at", "updated_at", "details",
+            "min_price", "min_delivery_time", "user_details",
         ]
 
     # ------------------------------------------------------------------ #
@@ -217,20 +209,21 @@ class OfferDetailSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         details_data = validated_data.pop("details", None)
 
-        # ----- scalar fields -------------------------------------------
+        # ---------- einfache Felder ------------------------------------
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
 
-        # ----- nested details ------------------------------------------
+        # ---------- verschachtelte Details -----------------------------
         if details_data is not None:
             existing_by_id   = {d.id: d for d in instance.details.all()}
             existing_by_type = {d.offer_type: d for d in instance.details.all()}
 
             for detail in details_data:
-                incoming_id = detail.get("id")
+                incoming_id   = detail.get("id")
+                incoming_type = detail.get("offer_type")
 
-                # ❶ update by explicit ID
+                # ❶ Update per ID
                 if incoming_id and incoming_id in existing_by_id:
                     obj = existing_by_id[incoming_id]
                     for k, v in detail.items():
@@ -239,32 +232,32 @@ class OfferDetailSerializer(serializers.ModelSerializer):
                     obj.save()
                     continue
 
-                # ❷ update by offer_type if no ID given
-                match = existing_by_type.get(detail.get("offer_type"))
-                if match:
+                # ❷ Update per offer_type
+                if incoming_type and incoming_type in existing_by_type:
+                    obj = existing_by_type[incoming_type]
                     for k, v in detail.items():
                         if k != "id":
-                            setattr(match, k, v)
-                    match.save()
+                            setattr(obj, k, v)
+                    obj.save()
                     continue
 
-                # ❸ truly new detail
-                OfferDetail.objects.create(
-                    offer=instance, **clean_detail_data(detail)
+                # ❸ Weder ID noch passender offer_type -> 400 statt Neuanlage
+                raise serializers.ValidationError(
+                    {"details": [f"Unknown offer_type '{incoming_type}' or missing id."]}
                 )
 
-        # ----- aggregates ----------------------------------------------
+        # ---------- Aggregate neu berechnen ----------------------------
         qs = instance.details.values_list("price", "delivery_time_in_days")
         if qs:
-            prices, days = zip(*qs)
-            instance.min_price         = min(prices)
+            prices, days        = zip(*qs)
+            instance.min_price  = min(prices)
             instance.min_delivery_time = min(days)
             instance.save(update_fields=["min_price", "min_delivery_time"])
 
         return instance
 
     # ------------------------------------------------------------------ #
-    #  output                                                            #
+    #  Ausgabe                                                           #
     # ------------------------------------------------------------------ #
     def to_representation(self, instance):
         rep = super().to_representation(instance)
